@@ -27,6 +27,7 @@ import io.github.rkaushikdev.cartwall.domain.DaypartGrid;
 import io.github.rkaushikdev.cartwall.domain.Flight;
 import io.github.rkaushikdev.cartwall.domain.Line;
 import io.github.rkaushikdev.cartwall.domain.Order;
+import io.github.rkaushikdev.cartwall.domain.OrderError;
 import io.github.rkaushikdev.cartwall.domain.RateCard;
 import io.github.rkaushikdev.cartwall.domain.RateCardBook;
 import io.github.rkaushikdev.cartwall.domain.Weekday;
@@ -336,6 +337,51 @@ class RepositoriesTest {
                 .extracting(Order::number)
                 .containsExactly("25-2000");
         assertThat(repo.runningOn(LocalDate.of(2025, 12, 25))).isEmpty();
+    }
+
+    @Test
+    void theOrdersRunningInASpanIncludeAFlightThatTouchesNeitherEnd() {
+        OrderRepository repo = orders();
+        Line midweek = new Line(
+                1,
+                "KWLO",
+                "AMD",
+                FIXED,
+                THIRTY,
+                Money.dollars(60),
+                Flight.build(LocalDate.of(2025, 9, 2), LocalDate.of(2025, 9, 4), "Tu-Th", 6));
+        Line wholeWeek = new Line(
+                1,
+                "KWLO",
+                "MID",
+                FIXED,
+                THIRTY,
+                Money.dollars(40),
+                Flight.build(LocalDate.of(2025, 9, 1), LocalDate.of(2025, 9, 7), "M-Su", 7));
+        repo.save(anOrder().number("25-1044").build());
+        repo.save(anOrder().number("25-3000").lines(midweek).build());
+        repo.save(anOrder().number("25-2000").lines(wholeWeek, aLine(2).build()).build());
+        session.commit();
+        LocalDate monday = LocalDate.of(2025, 9, 1);
+        LocalDate sunday = LocalDate.of(2025, 9, 7);
+        assertThat(repo.runningOn(monday)).extracting(Order::number).containsExactly("25-2000");
+        assertThat(repo.runningOn(sunday)).extracting(Order::number).containsExactly("25-2000");
+        assertThat(repo.runningBetween(monday, sunday))
+                .extracting(Order::number)
+                .containsExactly("25-2000", "25-3000");
+        assertThat(repo.runningBetween(LocalDate.of(2025, 9, 4), LocalDate.of(2025, 9, 4)))
+                .extracting(Order::number)
+                .containsExactly("25-2000", "25-3000");
+        assertThat(repo.runningBetween(MONDAY, LocalDate.of(2025, 9, 1)))
+                .extracting(Order::number)
+                .containsExactly("25-1044", "25-2000");
+    }
+
+    @Test
+    void aSpanThatRunsBackwardsIsRefused() {
+        assertThatThrownBy(() -> orders().runningBetween(LocalDate.of(2025, 9, 7), LocalDate.of(2025, 9, 1)))
+                .isInstanceOf(OrderError.class)
+                .hasMessageContaining("runs backwards");
     }
 
     @Test

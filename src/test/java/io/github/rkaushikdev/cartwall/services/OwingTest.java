@@ -190,6 +190,43 @@ class OwingTest {
         }
     }
 
+    private static Order anOrderFlown(LocalDate first, LocalDate last, String days, int perWeek) {
+        return new Order(
+                        "25-2000",
+                        "HYVEE",
+                        LocalDate.of(2025, 7, 21),
+                        "DHOLM",
+                        List.of(new Line(
+                                1,
+                                "KWLO",
+                                "AMD",
+                                FIXED,
+                                THIRTY,
+                                Money.parse("60.00"),
+                                Flight.build(first, last, days, perWeek))))
+                .confirmed();
+    }
+
+    @Test
+    void aFlightAcrossTheWholeWeekIsOwedItsCountOnce() {
+        try (UnitOfWork uow = engine.unitOfWork()) {
+            uow.orders().save(anOrderFlown(MONDAY, SUNDAY, "M-Su", 7));
+            assertThat(neverScheduled(uow, WEEK)).hasSize(7);
+        }
+    }
+
+    @Test
+    void aFlightSoldInsideTheWeekIsStillOwed() {
+        List<Debt> owed;
+        try (UnitOfWork uow = engine.unitOfWork()) {
+            uow.orders().save(anOrderFlown(LocalDate.of(2025, 8, 5), LocalDate.of(2025, 8, 7), "Tu-Th", 3));
+            owed = neverScheduled(uow, WEEK);
+        }
+        assertThat(owed).hasSize(3);
+        assertThat(owed).extracting(Debt::order).containsOnly("25-2000");
+        assertThat(owed).extracting(Debt::day).containsOnly(MONDAY);
+    }
+
     @Test
     void aWeekTheFlightDoesNotTouchOwesNothing() {
         try (UnitOfWork uow = engine.unitOfWork()) {

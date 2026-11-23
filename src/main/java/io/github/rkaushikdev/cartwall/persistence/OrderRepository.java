@@ -3,10 +3,10 @@ package io.github.rkaushikdev.cartwall.persistence;
 import io.github.rkaushikdev.cartwall.Details;
 import io.github.rkaushikdev.cartwall.LookupFailure;
 import io.github.rkaushikdev.cartwall.domain.Order;
+import io.github.rkaushikdev.cartwall.domain.OrderError;
 import io.github.rkaushikdev.cartwall.persistence.models.OrderRow;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDate;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -71,15 +71,30 @@ public final class OrderRepository {
 
     /** Every order with a line whose flight covers {@code day}, by number. */
     public List<Order> runningOn(LocalDate day) {
-        List<String> numbers = entityManager
+        return runningBetween(day, day);
+    }
+
+    /**
+     * Every order with a line whose flight touches the inclusive span, once each, by number.
+     *
+     * <p>A span is not its two ends. A flight sold Tuesday to Thursday sits inside a broadcast week
+     * without touching the Monday or the Sunday, and asking for the orders running on either end
+     * never finds it.
+     */
+    public List<Order> runningBetween(LocalDate first, LocalDate last) {
+        if (last.isBefore(first)) {
+            throw new OrderError("the span " + first + " to " + last + " runs backwards");
+        }
+        return entityManager
                 .createQuery(
-                        "select distinct l.orderNumber from LineRow l where l.firstAir <= :day and l.lastAir >= :day",
+                        "select distinct l.orderNumber from LineRow l where l.firstAir <= :last and l.lastAir >= :first",
                         String.class)
-                .setParameter("day", day)
-                .getResultList();
-        return numbers.stream()
+                .setParameter("first", first)
+                .setParameter("last", last)
+                .getResultList()
+                .stream()
+                .sorted()
                 .map(this::get)
-                .sorted(Comparator.comparing(Order::number))
                 .toList();
     }
 

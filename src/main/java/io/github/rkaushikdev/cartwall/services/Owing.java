@@ -99,14 +99,12 @@ public final class Owing {
     /**
      * The gap between what each line asked for in a week and what is on the log.
      *
-     * <p>The orders are those running on the week's first day followed by those running on its
-     * last, so an order whose flight covers both is read twice.
+     * <p>Every order with a flight anywhere in the week is read once: a flight across the whole
+     * week owes its count once, and a flight sold Tuesday to Thursday is read at all.
      */
     public static List<Debt> neverScheduled(UnitOfWork uow, BroadcastWeek week) {
-        List<Order> running = new ArrayList<>(uow.orders().runningOn(week.start()));
-        running.addAll(uow.orders().runningOn(week.end()));
         List<Debt> found = new ArrayList<>();
-        for (Order order : running) {
+        for (Order order : uow.orders().runningBetween(week.start(), week.end())) {
             if (!order.status().maySchedule()) {
                 continue;
             }

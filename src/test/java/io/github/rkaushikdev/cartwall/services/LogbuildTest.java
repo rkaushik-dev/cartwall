@@ -124,6 +124,47 @@ class LogbuildTest {
     }
 
     @Test
+    void aFlightThatStartsAndEndsInsideTheWeekIsScheduled() {
+        Line midweek = new Line(
+                1,
+                "KWLO",
+                "AMD",
+                FIXED,
+                THIRTY,
+                Money.parse("60.00"),
+                Flight.build(LocalDate.of(2025, 8, 5), LocalDate.of(2025, 8, 7), "Tu-Th", 6));
+        BuildReport report;
+        try (UnitOfWork uow = engine.unitOfWork()) {
+            uow.orders().save(anOrder("25-3000", List.of(midweek)));
+            report = buildWeek(uow);
+            uow.commit();
+        }
+        assertThat(report.orders()).hasSize(1);
+        assertThat(report.placed()).isEqualTo(6);
+        assertThat(report.isComplete()).isTrue();
+        assertThat(storedMonday().countFor("25-3000", 1)).isZero();
+    }
+
+    @Test
+    void anOrderAcrossTheWholeWeekIsScheduledOnce() {
+        Line wholeWeek = new Line(
+                1,
+                "KWLO",
+                "AMD",
+                FIXED,
+                THIRTY,
+                Money.parse("60.00"),
+                Flight.build(MONDAY, LocalDate.of(2025, 8, 10), "M-Su", 7));
+        BuildReport report;
+        try (UnitOfWork uow = engine.unitOfWork()) {
+            uow.orders().save(anOrder("25-2000", List.of(wholeWeek)));
+            report = buildWeek(uow);
+        }
+        assertThat(report.orders()).hasSize(1);
+        assertThat(report.placed()).isEqualTo(7);
+    }
+
+    @Test
     void whatWasWrittenComesBackAsABoard() {
         try (UnitOfWork uow = engine.unitOfWork()) {
             uow.orders().save(anOrder());

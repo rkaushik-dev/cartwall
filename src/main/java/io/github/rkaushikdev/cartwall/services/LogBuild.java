@@ -22,9 +22,7 @@ import io.github.rkaushikdev.cartwall.scheduling.Run;
 import io.github.rkaushikdev.cartwall.scheduling.StationDay;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -70,16 +68,11 @@ public final class LogBuild {
             }
         }
         AccountBook accounts = uow.accounts().book();
-        List<Order> running = new ArrayList<>(uow.orders().runningOn(week.start()));
-        running.addAll(uow.orders().runningOn(week.end()));
-        Map<String, Order> unique = new LinkedHashMap<>();
-        for (Order order : running) {
-            if (order.status().maySchedule()) {
-                unique.put(order.number(), order);
-            }
-        }
+        List<Order> running = uow.orders().runningBetween(week.start(), week.end()).stream()
+                .filter(order -> order.status().maySchedule())
+                .toList();
         BuildReport report = new BuildReport(week);
-        report.orders.addAll(Run.scheduleAll(boards, accounts, List.copyOf(unique.values()), week));
+        report.orders.addAll(Run.scheduleAll(boards, accounts, running, week));
 
         for (StationDay built : boards.built()) {
             Optional<LogState> state = stateOf(logs, built.call(), built.day());
