@@ -51,11 +51,9 @@ public final class Run {
                     "order " + order.number() + " is " + order.status().value() + " and cannot be scheduled",
                     Details.of("order", order.number(), "status", order.status().value()));
         }
-        if (!accounts.maySchedule(order.advertiser())) {
-            throw new RunError(
-                    order.advertiser() + " is on credit hold",
-                    Details.of("order", order.number(), "advertiser", order.advertiser()));
-        }
+        accounts.whyNotScheduled(order.advertiser()).ifPresent(why -> {
+            throw new RunError(why, Details.of("order", order.number(), "advertiser", order.advertiser()));
+        });
         List<LineResult> results = new ArrayList<>();
         for (Line line : placementOrder(order.lines())) {
             int count = line.flight().countIn(week);

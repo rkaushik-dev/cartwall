@@ -8,6 +8,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Every advertiser and agency on file, and who pays for whom.
@@ -96,21 +97,49 @@ public final class AccountBook {
 
     /** The account the money rolls up to, walking any chain of parents. */
     public String billingGroup(String code) {
-        Advertiser advertiser = advertiser(code);
-        List<String> seen = new ArrayList<>(List.of(advertiser.code()));
-        while (advertiser.parent().isPresent()) {
-            String parent = advertiser.parent().get();
-            if (seen.contains(parent)) {
-                throw new AccountError(String.join(" under ", seen) + " loops back on itself");
-            }
-            seen.add(parent);
-            advertiser = advertiser(parent);
-        }
-        return advertiser.code();
+        List<Advertiser> chain = chain(code);
+        return chain.get(chain.size() - 1).code();
+    }
+
+    /**
+     * The standing that governs an account: its own, or the strictest of the chain it buys under.
+     *
+     * <p>A store's credit is the chain's credit. When the head office is held, every store is
+     * held with it, whatever the store's own line in the book says, because it is the head office
+     * that pays.
+     */
+    public Credit standing(String code) {
+        return chain(code).stream().map(Advertiser::credit).reduce(Credit.OPEN, Credit::atLeast);
     }
 
     public boolean maySchedule(String code) {
-        return advertiser(code).credit().maySchedule();
+        return standing(code).maySchedule();
+    }
+
+    /** Why the account may not be scheduled, naming the account that holds it, or nothing when it may. */
+    public Optional<String> whyNotScheduled(String code) {
+        return chain(code).stream()
+                .filter(account -> !account.credit().maySchedule())
+                .findFirst()
+                .map(held -> held.code().equals(code)
+                        ? code + " is on credit hold"
+                        : code + " is on credit hold through " + held.code());
+    }
+
+    /** The account and every parent above it, the account first. */
+    private List<Advertiser> chain(String code) {
+        Advertiser advertiser = advertiser(code);
+        List<Advertiser> chain = new ArrayList<>(List.of(advertiser));
+        while (advertiser.parent().isPresent()) {
+            String parent = advertiser.parent().get();
+            if (chain.stream().anyMatch(seen -> seen.code().equals(parent))) {
+                List<String> codes = chain.stream().map(Advertiser::code).toList();
+                throw new AccountError(String.join(" under ", codes) + " loops back on itself");
+            }
+            advertiser = advertiser(parent);
+            chain.add(advertiser);
+        }
+        return List.copyOf(chain);
     }
 
     /** Everybody on file this advertiser may not sit beside, in code order. */

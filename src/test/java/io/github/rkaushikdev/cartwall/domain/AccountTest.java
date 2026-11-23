@@ -196,6 +196,37 @@ class AccountTest {
     }
 
     @Test
+    void aStoreIsHeldWhenTheChainItBuysUnderIsHeld() {
+        book.replaceAdvertiser(book.advertiser("HYVEE").withCredit(Credit.HOLD));
+        assertThat(book.advertiser("HYVEE1").credit()).isSameAs(Credit.OPEN);
+        assertThat(book.standing("HYVEE1")).isSameAs(Credit.HOLD);
+        assertThat(book.maySchedule("HYVEE1")).isFalse();
+        assertThat(book.whyNotScheduled("HYVEE1")).contains("HYVEE1 is on credit hold through HYVEE");
+        assertThat(book.whyNotScheduled("HYVEE")).contains("HYVEE is on credit hold");
+        assertThat(book.whyNotScheduled("CASEY")).isEmpty();
+    }
+
+    @Test
+    void theStrictestStandingInTheChainGoverns() {
+        book.replaceAdvertiser(book.advertiser("HYVEE").withCredit(Credit.PREPAY));
+        assertThat(book.standing("HYVEE1")).isSameAs(Credit.PREPAY);
+        assertThat(book.maySchedule("HYVEE1")).isTrue();
+        book.replaceAdvertiser(book.advertiser("HYVEE1").withCredit(Credit.HOLD));
+        assertThat(book.standing("HYVEE1")).isSameAs(Credit.HOLD);
+        assertThat(book.whyNotScheduled("HYVEE1")).contains("HYVEE1 is on credit hold");
+        assertThat(book.standing("HYVEE")).isSameAs(Credit.PREPAY);
+    }
+
+    @Test
+    void aChainThatLoopsIsRefusedWhereverItIsRead() {
+        book.replaceAdvertiser(book.advertiser("HYVEE").withParent("HYVEE1"));
+        assertThatThrownBy(() -> book.standing("HYVEE1"))
+                .isInstanceOf(AccountError.class)
+                .hasMessageContaining("HYVEE1 under HYVEE loops back on itself");
+        assertThatThrownBy(() -> book.billingGroup("HYVEE")).isInstanceOf(AccountError.class);
+    }
+
+    @Test
     void theBookListsWhoAnAdvertiserMayNotSitBeside() {
         assertThat(book.conflicting("DEALF")).extracting(Advertiser::code).containsExactly("DEALG");
         assertThat(book.conflicting("HYVEE")).extracting(Advertiser::code).containsExactly("CASEY", "HYVEE1");

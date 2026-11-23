@@ -125,6 +125,16 @@ class RunTest {
     }
 
     @Test
+    void aStoreWhoseChainIsHeldIsNotScheduled() {
+        accounts.addAdvertiser(Advertiser.build("CHAIN", "Chain Office").withCredit(Credit.HOLD));
+        accounts.addAdvertiser(Advertiser.build("STORE", "Chain Store").withParent("CHAIN"));
+        Order order = confirmed(anOrder(aLine(1).build()).advertiser("STORE"));
+        RunError caught = catchThrowableOfType(RunError.class, () -> scheduleOrder(boards, accounts, order, WEEK));
+        assertThat(caught).hasMessage("STORE is on credit hold through CHAIN");
+        assertThat(caught.context()).containsEntry("advertiser", "STORE");
+    }
+
+    @Test
     void aOneLineOrderPlacesItsWeek() {
         OrderResult result = scheduleOrder(boards, accounts, confirmed(anOrder(aLine(1).build())), WEEK);
         assertThat(result.wanted()).isEqualTo(10);

@@ -111,17 +111,15 @@ public class OrdersController {
         });
     }
 
-    /** Make an order schedulable. Refused if the advertiser is on hold. */
+    /** Make an order schedulable. Refused if the advertiser, or the chain it buys under, is on hold. */
     @PostMapping("/{number}/confirm")
     @Requires(Role.SELLER)
     public OrderOut confirmOrder(@PathVariable String number, Caller caller) {
         return work.apply(uow -> {
             Order order = uow.orders().get(number);
-            if (!uow.accounts().book().maySchedule(order.advertiser())) {
-                throw new ConflictError(
-                        order.advertiser() + " is on credit hold",
-                        Details.of("order", number, "advertiser", order.advertiser()));
-            }
+            uow.accounts().book().whyNotScheduled(order.advertiser()).ifPresent(why -> {
+                throw new ConflictError(why, Details.of("order", number, "advertiser", order.advertiser()));
+            });
             Order confirmed = order.confirmed();
             uow.orders().save(confirmed);
             Audit.tryRecord(
