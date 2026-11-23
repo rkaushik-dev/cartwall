@@ -79,12 +79,7 @@ public record DaypartGrid(List<Daypart> dayparts) {
 
     /** Hours of the week no daypart sells. */
     public Set<Cell> gaps() {
-        Set<Cell> missing = new TreeSet<>();
-        for (Weekday day : Weekday.values()) {
-            for (int hour = 0; hour < Daypart.HOURS_IN_DAY; hour++) {
-                missing.add(new Cell(day, hour));
-            }
-        }
+        Set<Cell> missing = new TreeSet<>(Cell.week());
         missing.removeAll(covered());
         return Collections.unmodifiableSet(missing);
     }

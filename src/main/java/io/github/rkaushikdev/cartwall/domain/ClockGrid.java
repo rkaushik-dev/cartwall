@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
@@ -83,13 +84,10 @@ public final class ClockGrid {
         if (hour < 0 || hour >= Daypart.HOURS_IN_DAY) {
             throw new ProgrammingError("hour " + hour + " is not in the day");
         }
-        for (int index = assignments.size() - 1; index >= 0; index--) {
-            Assignment assignment = assignments.get(index);
-            if (assignment.covers(day, hour)) {
-                return new Slot(day, hour, assignment);
-            }
-        }
-        throw new ProgrammingError(station + " has nothing programmed " + day.shortName() + " at " + hour);
+        return covering(new Cell(day, hour))
+                .map(assignment -> new Slot(day, hour, assignment))
+                .orElseThrow(() ->
+                        new ProgrammingError(station + " has nothing programmed " + day.shortName() + " at " + hour));
     }
 
     /** The clock that runs, or a refusal if the hour is preempted. */
@@ -129,25 +127,14 @@ public final class ClockGrid {
     }
 
     public boolean sells(Weekday day, int hour) {
-        try {
-            return slot(day, hour).sells();
-        } catch (ProgrammingError nothingProgrammed) {
-            return false;
-        }
+        return covering(new Cell(day, hour))
+                .filter(assignment -> assignment.source().sells())
+                .isPresent();
     }
 
     /** Hours nothing has been programmed into. */
     public List<Cell> gaps() {
-        List<Cell> found = new ArrayList<>();
-        for (Weekday day : Weekday.values()) {
-            for (int hour = 0; hour < Daypart.HOURS_IN_DAY; hour++) {
-                int at = hour;
-                if (assignments.stream().noneMatch(assignment -> assignment.covers(day, at))) {
-                    found.add(new Cell(day, hour));
-                }
-            }
-        }
-        return List.copyOf(found);
+        return Cell.week().stream().filter(cell -> covering(cell).isEmpty()).toList();
     }
 
     public boolean isComplete() {
@@ -155,27 +142,52 @@ public final class ClockGrid {
     }
 
     public int sellingHours() {
-        int total = 0;
-        for (Weekday day : Weekday.values()) {
-            for (int hour = 0; hour < Daypart.HOURS_IN_DAY; hour++) {
-                if (sells(day, hour)) {
-                    total++;
-                }
-            }
-        }
-        return total;
+        return sellingCells().size();
     }
 
     /** Every local unit the grid puts on the air in a week. */
     public int unitsAWeek() {
-        int total = 0;
-        for (Weekday day : Weekday.values()) {
-            for (int hour = 0; hour < Daypart.HOURS_IN_DAY; hour++) {
-                if (sells(day, hour)) {
-                    total += clockFor(day, hour).unitCount();
-                }
+        return unitsIn(sellingCells());
+    }
+
+    /**
+     * The local units a week the grid puts inside each daypart, in the daypart grid's filing order.
+     *
+     * <p>This is the denominator a rate card is set against: what a daypart has to sell before
+     * anybody has bought any of it. The dayparts overlap, so the counts do not add up to the
+     * week, and a daypart that sits entirely inside a ballgame carries none.
+     */
+    public Map<String, Integer> inventory(DaypartGrid dayparts) {
+        List<Cell> selling = sellingCells();
+        Map<String, Integer> units = new LinkedHashMap<>();
+        for (Daypart daypart : dayparts.dayparts()) {
+            Set<Cell> inside = daypart.cells();
+            units.put(
+                    daypart.code(),
+                    unitsIn(selling.stream().filter(inside::contains).toList()));
+        }
+        return Collections.unmodifiableMap(units);
+    }
+
+    private List<Cell> sellingCells() {
+        return Cell.week().stream()
+                .filter(cell -> sells(cell.day(), cell.hour()))
+                .toList();
+    }
+
+    private int unitsIn(List<Cell> cells) {
+        return cells.stream()
+                .mapToInt(cell -> clockFor(cell.day(), cell.hour()).unitCount())
+                .sum();
+    }
+
+    /** The last assignment filed over a cell, which is the one that wins it. */
+    private Optional<Assignment> covering(Cell cell) {
+        for (int index = assignments.size() - 1; index >= 0; index--) {
+            if (assignments.get(index).covers(cell.day(), cell.hour())) {
+                return Optional.of(assignments.get(index));
             }
         }
-        return total;
+        return Optional.empty();
     }
 }

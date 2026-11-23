@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -156,5 +158,45 @@ class ProgrammingTest {
     void theFarmBlockAndTheBallgameBothChangeTheWeeklyUnitCount() {
         // 164 selling hours: five of them are talk at 30 units, the rest music at 24.
         assertThat(grid.unitsAWeek()).isEqualTo(5 * 30 + 159 * 24);
+    }
+
+    @Test
+    void theWeekIsAHundredAndSixtyEightCellsMondayMidnightFirst() {
+        assertThat(Cell.week()).hasSize(Daypart.CELLS_IN_WEEK).isSorted().doesNotHaveDuplicates();
+        assertThat(Cell.week().get(0)).isEqualTo(new Cell(MON, 0));
+        assertThat(Cell.week().get(167)).isEqualTo(new Cell(Weekday.SUN, 23));
+    }
+
+    @Test
+    void theGridCountsWhatEachDaypartHasToSellInAWeek() {
+        Map<String, Integer> inventory = grid.inventory(DaypartGrid.standardGrid());
+        assertThat(inventory.keySet()).containsExactly("AMD", "MID", "PMD", "EVE", "SAT", "SUN", "OVN", "AAA", "ROS");
+        assertThat(inventory.get("AMD")).isEqualTo(20 * 24);
+        // Four hours of Friday night are football.
+        assertThat(inventory.get("EVE")).isEqualTo(21 * 24);
+        // The 5a hour on weekdays is the farm block, on the talk clock.
+        assertThat(inventory.get("OVN")).isEqualTo(5 * 30 + 37 * 24);
+        assertThat(inventory.get("ROS")).isEqualTo(grid.unitsAWeek());
+    }
+
+    @Test
+    void aDaypartInsideTheBallgameHasNothingToSell() {
+        DaypartGrid football = new DaypartGrid(List.of(
+                Daypart.build("FBL", "friday football", "F", 19, 23),
+                Daypart.build("ROS", "everything", "M-Su", 0, 24)));
+        assertThat(grid.inventory(football)).containsEntry("FBL", 0).containsEntry("ROS", 5 * 30 + 159 * 24);
+    }
+
+    @Test
+    void aGridWithHolesCountsOnlyWhatIsProgrammed() {
+        ClockGrid thin = new ClockGrid("KCRR", JANUARY);
+        thin.fileClock(musicClock());
+        thin.assign(Assignment.build("weekdays", "M-F", 6, 19, "MUS"));
+        assertThat(thin.gaps()).hasSize(168 - 65).first().isEqualTo(new Cell(MON, 0));
+        assertThat(thin.sellingHours()).isEqualTo(65);
+        assertThat(thin.inventory(DaypartGrid.standardGrid()))
+                .containsEntry("AAA", 65 * 24)
+                .containsEntry("SAT", 0)
+                .containsEntry("OVN", 0);
     }
 }
