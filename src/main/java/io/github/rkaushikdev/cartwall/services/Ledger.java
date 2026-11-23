@@ -1,15 +1,16 @@
 package io.github.rkaushikdev.cartwall.services;
 
+import io.github.rkaushikdev.cartwall.BroadcastMonth;
 import io.github.rkaushikdev.cartwall.Money;
 import io.github.rkaushikdev.cartwall.scheduling.LineKey;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.function.Function;
 
 /**
@@ -86,17 +87,39 @@ public final class Ledger {
         return worstFirst(stillOwed(), debt -> debt.cause().value());
     }
 
+    /**
+     * What has to be credited when {@code month} is invoiced: spots owed in the month with no
+     * makegood accepted inside it, oldest first.
+     *
+     * <p>A miss made good in the same month nets out on the invoice. One still open at the close,
+     * or made good only in the next month, is a spot the month billed for and did not deliver,
+     * and the invoice carries a credit for it rather than a promise.
+     */
+    public List<Debt> toCreditAt(BroadcastMonth month) {
+        return entries.stream()
+                .filter(entry -> month.contains(entry.debt().day()))
+                .filter(entry ->
+                        entry.accepted().filter(made -> !made.crossesMonth()).isEmpty())
+                .sorted(OLDEST_FIRST)
+                .map(LedgerEntry::debt)
+                .toList();
+    }
+
+    /** What the month's close has to credit, at the rate each spot was sold at. */
+    public Money creditAt(BroadcastMonth month) {
+        return Money.total(toCreditAt(month).stream().map(Debt::rate).toList());
+    }
+
     public int size() {
         return entries.size();
     }
 
     private static <K extends Comparable<K>> Map<K, Integer> worstFirst(List<Debt> debts, Function<Debt, K> key) {
-        Map<K, Integer> tally = new HashMap<>();
+        Map<K, Integer> tally = new TreeMap<>();
         debts.forEach(debt -> tally.merge(key.apply(debt), 1, Integer::sum));
         Map<K, Integer> ordered = new LinkedHashMap<>();
         tally.entrySet().stream()
-                .sorted(Comparator.comparing((Map.Entry<K, Integer> entry) -> -entry.getValue())
-                        .thenComparing(Map.Entry::getKey))
+                .sorted(Map.Entry.comparingByValue(Comparator.reverseOrder()))
                 .forEach(entry -> ordered.put(entry.getKey(), entry.getValue()));
         return ordered;
     }

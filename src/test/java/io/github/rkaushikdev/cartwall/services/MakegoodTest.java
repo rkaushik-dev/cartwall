@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
+import io.github.rkaushikdev.cartwall.BroadcastMonth;
 import io.github.rkaushikdev.cartwall.Money;
 import io.github.rkaushikdev.cartwall.domain.ClassOfTime;
 import io.github.rkaushikdev.cartwall.scheduling.LineKey;
@@ -272,5 +273,49 @@ class MakegoodTest {
         assertThatThrownBy(() -> offer(aDebt(1, FRIDAY, "60.00", Cause.DID_NOT_RUN), MONDAY, "AMD", Money.dollars(60)))
                 .isInstanceOf(MakegoodError.class)
                 .hasMessageContaining("cannot run on");
+    }
+
+    private static final LocalDate MONTH_END = LocalDate.of(2025, 8, 24);
+    private static final LocalDate SEPTEMBER = LocalDate.of(2025, 8, 25);
+
+    private static Makegood accepted(Debt debt, LocalDate day) {
+        return offer(debt, day, "AMD", Money.dollars(60)).withState(Offer.ACCEPTED);
+    }
+
+    @Test
+    void aMakegoodAfterTheBroadcastMonthClosesSaysSo() {
+        assertThat(offer(aDebt(), MONTH_END, "AMD", Money.dollars(60)).crossesMonth())
+                .isFalse();
+        Makegood late = offer(aDebt(), SEPTEMBER, "AMD", Money.dollars(60));
+        assertThat(late.crossesMonth()).isTrue();
+        assertThat(late).hasToString("25-1044-1 offered AMD on 2025-08-25 at $60.00 next month (open)");
+        assertThat(offer(aDebt(), SEPTEMBER, "MID", Money.dollars(32)))
+                .hasToString("25-1044-1 offered MID on 2025-08-25 at $32.00 short next month (open)");
+    }
+
+    @Test
+    void theMonthCreditsWhatItDidNotMakeGoodInsideItself() {
+        Ledger ledger = new Ledger();
+        Debt madeGood = aDebt(1);
+        Debt madeGoodLate = aDebt(2);
+        Debt stillOpen = aDebt(3, NEXT_WEEK, "45.00", Cause.BUMPED);
+        Debt nextMonth = aDebt(4, SEPTEMBER, "60.00", Cause.DID_NOT_RUN);
+        ledger.owe(madeGood, List.of(accepted(madeGood, FRIDAY)));
+        ledger.owe(madeGoodLate, List.of(accepted(madeGoodLate, SEPTEMBER)));
+        ledger.owe(stillOpen, List.of(offer(stillOpen, MONTH_END, "AMD", Money.dollars(45))));
+        ledger.owe(nextMonth);
+        BroadcastMonth august = new BroadcastMonth(2025, 8);
+        assertThat(ledger.toCreditAt(august)).containsExactly(madeGoodLate, stillOpen);
+        assertThat(ledger.creditAt(august)).isEqualTo(Money.dollars(105));
+        assertThat(ledger.toCreditAt(new BroadcastMonth(2025, 9))).containsExactly(nextMonth);
+        assertThat(ledger.stillOwed()).containsExactly(stillOpen, nextMonth);
+    }
+
+    @Test
+    void anOfferStateIsReadByItsStoredName() {
+        assertThat(Offer.fromValue("accepted")).isSameAs(Offer.ACCEPTED);
+        assertThatThrownBy(() -> Offer.fromValue("maybe"))
+                .isInstanceOf(MakegoodError.class)
+                .hasMessageContaining("'maybe' is not an offer state");
     }
 }

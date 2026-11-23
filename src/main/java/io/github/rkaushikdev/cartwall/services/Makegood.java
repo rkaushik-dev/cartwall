@@ -1,5 +1,6 @@
 package io.github.rkaushikdev.cartwall.services;
 
+import io.github.rkaushikdev.cartwall.BroadcastMonth;
 import io.github.rkaushikdev.cartwall.Details;
 import io.github.rkaushikdev.cartwall.Money;
 import java.time.LocalDate;
@@ -9,7 +10,8 @@ import java.time.LocalDate;
  *
  * <p>A makegood has to be worth what was lost. A drive time spot is not made good with an
  * overnight one, and an offer cheaper than what was missed is one a client is entitled to refuse,
- * so it is marked short rather than quietly booked.
+ * so it is marked short rather than quietly booked. One that runs in the next broadcast month is
+ * allowed, and says so, because the miss has been billed by then.
  *
  * @param debt the spot owed
  * @param day the day offered
@@ -42,13 +44,23 @@ public record Makegood(Debt debt, LocalDate day, String daypart, Money rate, Off
         return gap.cents() > 0 ? gap : Money.ZERO;
     }
 
+    /**
+     * Whether the makegood runs in a later broadcast month than the spot it replaces.
+     *
+     * <p>The month the spot was owed in has already been invoiced by then, so the agency sees a
+     * miss on one invoice and the makegood on the next, and plenty of buyers will not accept that.
+     */
+    public boolean crossesMonth() {
+        return !BroadcastMonth.of(day).equals(BroadcastMonth.of(debt.day()));
+    }
+
     public Makegood withState(Offer state) {
         return new Makegood(debt, day, daypart, rate, state, isShort);
     }
 
     @Override
     public String toString() {
-        String note = isShort ? " short" : "";
+        String note = (isShort ? " short" : "") + (crossesMonth() ? " next month" : "");
         return debt.order() + "-" + debt.line() + " offered " + daypart + " on " + day + " at " + rate + note + " ("
                 + state.value() + ")";
     }

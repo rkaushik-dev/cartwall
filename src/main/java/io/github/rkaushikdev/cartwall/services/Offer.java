@@ -1,5 +1,7 @@
 package io.github.rkaushikdev.cartwall.services;
 
+import java.util.Arrays;
+
 /** Where a makegood offer stands. Nothing airs because one was proposed; it has to be accepted. */
 public enum Offer {
     OPEN("open"),
@@ -24,11 +26,9 @@ public enum Offer {
     }
 
     public static Offer fromValue(String value) {
-        for (Offer state : values()) {
-            if (state.value.equals(value)) {
-                return state;
-            }
-        }
-        throw new MakegoodError("'" + value + "' is not an offer state");
+        return Arrays.stream(values())
+                .filter(state -> state.value.equals(value))
+                .findFirst()
+                .orElseThrow(() -> new MakegoodError("'" + value + "' is not an offer state"));
     }
 }
