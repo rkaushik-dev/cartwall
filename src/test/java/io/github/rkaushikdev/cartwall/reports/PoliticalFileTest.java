@@ -209,4 +209,71 @@ class PoliticalFileTest {
         file.file(accepted(aCandidacy("A. Hollis", "Merrick for Iowa"), "", List.of(aBought())));
         assertThat(file.renderAll()).contains("R. Merrick").doesNotContain("A. Hollis");
     }
+
+    private static FileEntry airedOn(Candidacy candidacy, Use use, LocalDate... days) {
+        FileEntry entry = accepted(candidacy, use, "26-0400", List.of(aBought()), ASKED);
+        for (LocalDate day : days) {
+            entry.noteAir(new Aired(day, "7:10:04a", "KWLO"), day.plusDays(1));
+        }
+        return entry;
+    }
+
+    @Test
+    void anOpponentHasAWeekFromEachUseToAskForEqualTime() {
+        PoliticalFile file = new PoliticalFile();
+        file.file(airedOn(aCandidacy(), Use.CANDIDATE, LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 5)));
+        Candidacy hollis = aCandidacy("A. Hollis", "Hollis for Iowa");
+        List<PoliticalFile.Opening> open = file.equalOpportunities(hollis, LocalDate.of(2026, 10, 8));
+        assertThat(open)
+                .extracting(PoliticalFile.Opening::closes)
+                .containsExactly(LocalDate.of(2026, 10, 8), LocalDate.of(2026, 10, 12));
+        assertThat(open.get(0).opponent()).isEqualTo("R. Merrick");
+        assertThat(open.get(0).order()).isEqualTo("26-0400");
+        assertThat(open.get(0).use().day()).isEqualTo(LocalDate.of(2026, 10, 1));
+        assertThat(file.equalOpportunities(hollis, LocalDate.of(2026, 10, 9)))
+                .extracting(PoliticalFile.Opening::closes)
+                .containsExactly(LocalDate.of(2026, 10, 12));
+        assertThat(file.equalOpportunities(hollis, LocalDate.of(2026, 10, 13))).isEmpty();
+    }
+
+    @Test
+    void aUseOpensNothingBeforeItAirsOrForTheCandidateWhoMadeIt() {
+        PoliticalFile file = new PoliticalFile();
+        file.file(airedOn(aCandidacy(), Use.CANDIDATE, LocalDate.of(2026, 10, 5)));
+        assertThat(file.equalOpportunities(aCandidacy("A. Hollis", "x"), LocalDate.of(2026, 10, 4)))
+                .isEmpty();
+        assertThat(file.equalOpportunities(aCandidacy(), LocalDate.of(2026, 10, 6)))
+                .isEmpty();
+        file.file(accepted());
+        assertThat(file.equalOpportunities(aCandidacy("A. Hollis", "x"), LocalDate.of(2026, 10, 6)))
+                .hasSize(1);
+    }
+
+    @Test
+    void issueAdvertisingAndOtherRacesOpenNoEqualTime() {
+        PoliticalFile file = new PoliticalFile();
+        file.file(airedOn(aCandidacy(), Use.ISSUE, LocalDate.of(2026, 10, 5)));
+        Race senate = new Race("Iowa Senate 32", Election.GENERAL, LocalDate.of(2026, 11, 3));
+        file.file(airedOn(
+                new Candidacy("J. Coyle", senate, "Coyle for Senate", "Coyle for Senate"),
+                Use.CANDIDATE,
+                LocalDate.of(2026, 10, 5)));
+        Race primary = new Race("Iowa House 63", Election.PRIMARY, LocalDate.of(2026, 6, 2));
+        file.file(airedOn(
+                new Candidacy("P. Ames", primary, "Ames for Iowa", "Ames for Iowa"),
+                Use.CANDIDATE,
+                LocalDate.of(2026, 10, 5)));
+        assertThat(file.equalOpportunities(aCandidacy("A. Hollis", "x"), LocalDate.of(2026, 10, 6)))
+                .isEmpty();
+        assertThat(file.rejected()).isEmpty();
+    }
+
+    @Test
+    void equalSpendIsListedInNameOrder() {
+        PoliticalFile file = new PoliticalFile();
+        file.file(accepted(aCandidacy("R. Merrick", "Merrick for Iowa"), "25-1044", List.of(aBought(10, "18.00"))));
+        file.file(accepted(aCandidacy("A. Hollis", "Merrick for Iowa"), "25-1045", List.of(aBought(10, "18.00"))));
+        file.file(accepted(aCandidacy("C. Brandt", "Merrick for Iowa"), "25-1046", List.of(aBought(11, "18.00"))));
+        assertThat(file.spendByCandidate().keySet()).containsExactly("C. Brandt", "A. Hollis", "R. Merrick");
+    }
 }
