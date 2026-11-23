@@ -1,5 +1,6 @@
 package io.github.rkaushikdev.cartwall.persistence;
 
+import io.github.rkaushikdev.cartwall.BroadcastWeek;
 import io.github.rkaushikdev.cartwall.domain.AccountBook;
 import io.github.rkaushikdev.cartwall.domain.Advertiser;
 import io.github.rkaushikdev.cartwall.domain.Agency;
@@ -40,12 +41,14 @@ import io.github.rkaushikdev.cartwall.persistence.models.RotationRow;
 import io.github.rkaushikdev.cartwall.persistence.models.StationRow;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.stream.Collectors;
 
 /**
  * Rows to domain objects and back, one pair of functions per aggregate.
@@ -307,6 +310,9 @@ public final class Mappers {
                 Weekday.showDays(line.flight().days()),
                 line.flight().perWeek());
         row.setCardCode(cardCode);
+        row.setDarkWeeks(line.flight().dark().stream()
+                .map(week -> week.start().toString())
+                .collect(Collectors.joining(",")));
         List<Slice> carts = rotation.map(Rotation::slices)
                 .orElseGet(() -> line.carts().stream().map(Slice::new).toList());
         RotationKind kind = rotation.map(Rotation::kind).orElse(RotationKind.EVEN);
@@ -327,7 +333,15 @@ public final class Mappers {
                 row.getGrade(),
                 row.getLength(),
                 row.getRate(),
-                new Flight(row.getFirstAir(), row.getLastAir(), Weekday.parseDays(row.getDays()), row.getPerWeek()),
+                new Flight(
+                        row.getFirstAir(),
+                        row.getLastAir(),
+                        Weekday.parseDays(row.getDays()),
+                        row.getPerWeek(),
+                        Arrays.stream(row.getDarkWeeks().split(","))
+                                .filter(monday -> !monday.isEmpty())
+                                .map(monday -> new BroadcastWeek(LocalDate.parse(monday)))
+                                .collect(Collectors.toSet())),
                 row.getRotation().stream().map(RotationRow::getCart).toList());
     }
 

@@ -8,10 +8,12 @@ import io.github.rkaushikdev.cartwall.BroadcastWeek;
 import io.github.rkaushikdev.cartwall.Fixtures;
 import io.github.rkaushikdev.cartwall.Money;
 import io.github.rkaushikdev.cartwall.domain.ClassOfTime;
+import io.github.rkaushikdev.cartwall.domain.Flight;
 import io.github.rkaushikdev.cartwall.domain.Order;
 import io.github.rkaushikdev.cartwall.domain.OrderStatus;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class ConfirmationTest {
@@ -87,6 +89,22 @@ class ConfirmationTest {
                 .contains("GROSS        $3,915.00\n")
                 .contains("COMMISSION   $587.25\n")
                 .endsWith("NET          $3,327.75\n");
+    }
+
+    @Test
+    void aBuyThatGoesDarkSaysWhichWeeks() {
+        Order order = anOrder()
+                .lines(aLine(1).flight(Flight.build(LocalDate.of(2025, 8, 4), LocalDate.of(2025, 8, 29), "M-F", 12)
+                                .goingDark(List.of(LocalDate.of(2025, 8, 18))))
+                        .build())
+                .build();
+        Confirmation confirmation = Confirmation.of(order, Fixtures.accounts());
+        assertThat(confirmation.darkWeeks()).containsExactly("line 1 dark 08/18");
+        assertThat(confirmation.stubs()).isEmpty();
+        assertThat(confirmation.render())
+                .contains("DARK WEEKS\n  line 1 dark 08/18\n")
+                .contains("BY MONTH\n  2025-08       $1,440.00\n  2025-09         $720.00\n")
+                .contains("GROSS        $2,160.00\n");
     }
 
     @Test

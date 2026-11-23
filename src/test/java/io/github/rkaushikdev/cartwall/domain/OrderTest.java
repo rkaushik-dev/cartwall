@@ -115,6 +115,51 @@ class OrderTest {
     }
 
     @Test
+    void aDarkWeekCarriesNothingAndIsNotAStub() {
+        Flight flight = aFlight().goingDark(List.of(LocalDate.of(2025, 8, 13)));
+        BroadcastWeek dark = new BroadcastWeek(LocalDate.of(2025, 8, 11));
+        assertThat(flight.isDark(dark)).isTrue();
+        assertThat(flight.isStub(dark)).isFalse();
+        assertThat(flight.countIn(dark)).isZero();
+        assertThat(counts(flight)).containsExactly(12, 0, 12, 12);
+        assertThat(flight.spots()).isEqualTo(36);
+        assertThat(flight.runsOn(LocalDate.of(2025, 8, 12))).isFalse();
+        assertThat(flight.airDays()).hasSize(15).doesNotContain(LocalDate.of(2025, 8, 11));
+        assertThat(flight.daysIn(dark)).isEmpty();
+    }
+
+    @Test
+    void aFlightCanGoDarkMoreThanOnceAndSaysWhere() {
+        Flight flight = aFlight()
+                .goingDark(List.of(LocalDate.of(2025, 8, 25)))
+                .goingDark(List.of(LocalDate.of(2025, 8, 11), LocalDate.of(2025, 8, 15)));
+        assertThat(flight.dark())
+                .containsExactly(
+                        new BroadcastWeek(LocalDate.of(2025, 8, 11)), new BroadcastWeek(LocalDate.of(2025, 8, 25)));
+        assertThat(flight.showDark()).isEqualTo("08/11, 08/25");
+        assertThat(flight).hasToString("08/04-08/29 M-F 12x dark 08/11, 08/25");
+        assertThat(flight.spots()).isEqualTo(24);
+    }
+
+    @Test
+    void aStubWeekCanStillBeTheOneThatGoesDark() {
+        Flight flight = aFlight(THURSDAY, END).goingDark(List.of(THURSDAY));
+        assertThat(counts(flight)).containsExactly(0, 12, 12, 12);
+        assertThat(flight.isStub(new BroadcastWeek(MONDAY))).isFalse();
+        assertThat(aFlight(THURSDAY, END).isStub(new BroadcastWeek(MONDAY))).isTrue();
+    }
+
+    @Test
+    void aFlightCannotGoDarkOutsideItselfOrAllTheWayThrough() {
+        assertThatThrownBy(() -> aFlight().goingDark(List.of(LocalDate.of(2025, 9, 1))))
+                .isInstanceOf(OrderError.class)
+                .hasMessageContaining("cannot go dark the week of 2025-09-01");
+        assertThatThrownBy(() -> aFlight(MONDAY, LocalDate.of(2025, 8, 8)).goingDark(List.of(MONDAY)))
+                .isInstanceOf(OrderError.class)
+                .hasMessageContaining("buys nothing");
+    }
+
+    @Test
     void aLineThatCannotBeWritten() {
         assertThatThrownBy(() -> aLine(0).build())
                 .isInstanceOf(OrderError.class)

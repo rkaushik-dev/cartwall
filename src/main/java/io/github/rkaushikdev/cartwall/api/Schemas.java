@@ -1,6 +1,7 @@
 package io.github.rkaushikdev.cartwall.api;
 
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import io.github.rkaushikdev.cartwall.BroadcastWeek;
 import io.github.rkaushikdev.cartwall.api.Amounts.AmountJson;
 import io.github.rkaushikdev.cartwall.api.Amounts.LengthJson;
 import io.github.rkaushikdev.cartwall.domain.ClassOfTime;
@@ -40,7 +41,18 @@ public final class Schemas {
             @NotNull(message = REQUIRED)
                     @Min(value = 1, message = "Input should be greater than or equal to 1")
                     @Max(value = 500, message = "Input should be less than or equal to 500")
-                    Integer perWeek) {}
+                    Integer perWeek,
+            List<LocalDate> dark) {
+
+        public FlightIn {
+            dark = dark == null ? List.of() : List.copyOf(dark);
+        }
+
+        /** The flight, dark in the week holding each date given. */
+        public Flight toDomain() {
+            return Flight.build(first, last, days, perWeek).goingDark(dark);
+        }
+    }
 
     /** One line of an order as a body carries it. */
     public record LineIn(
@@ -66,7 +78,7 @@ public final class Schemas {
                     grade,
                     Amounts.lengthOf(length),
                     Amounts.moneyOf(rate),
-                    Flight.build(flight.first(), flight.last(), flight.days(), flight.perWeek()),
+                    flight.toDomain(),
                     carts);
         }
     }
@@ -102,7 +114,8 @@ public final class Schemas {
     }
 
     /** A flight as a response writes it out. */
-    public record FlightOut(LocalDate first, LocalDate last, String days, int perWeek, int spots) {}
+    public record FlightOut(
+            LocalDate first, LocalDate last, String days, int perWeek, int spots, List<LocalDate> dark) {}
 
     /** One line of an order as a response writes it out, its money as strings. */
     public record LineOut(
@@ -132,7 +145,10 @@ public final class Schemas {
                             line.flight().last(),
                             Weekday.showDays(line.flight().days()),
                             line.flight().perWeek(),
-                            line.flight().spots()),
+                            line.flight().spots(),
+                            line.flight().dark().stream()
+                                    .map(BroadcastWeek::start)
+                                    .toList()),
                     line.carts());
         }
     }

@@ -85,6 +85,10 @@ public class LineRow {
     @Column(name = "per_week", nullable = false)
     private int perWeek;
 
+    /** The Mondays of the weeks the flight goes dark, comma separated; empty when it never does. */
+    @Column(name = "dark_weeks", length = 400, nullable = false)
+    private String darkWeeks = "";
+
     @OneToMany(mappedBy = "line", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("position")
     private List<RotationRow> rotation = new ArrayList<>();
@@ -195,6 +199,14 @@ public class LineRow {
 
     public int getPerWeek() {
         return perWeek;
+    }
+
+    public String getDarkWeeks() {
+        return darkWeeks;
+    }
+
+    public void setDarkWeeks(String darkWeeks) {
+        this.darkWeeks = darkWeeks;
     }
 
     /** The rotation, in written order once read back. */

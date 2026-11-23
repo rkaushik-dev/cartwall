@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.rkaushikdev.cartwall.BroadcastWeek;
 import io.github.rkaushikdev.cartwall.Money;
 import io.github.rkaushikdev.cartwall.api.Schemas.LineIn;
 import io.github.rkaushikdev.cartwall.api.Schemas.LineOut;
@@ -236,6 +237,23 @@ class ApiSchemasTest {
         assertThat(out.value()).isEqualTo("2880.00");
         assertThat(out.length()).isEqualTo(":30");
         assertThat(out.spots()).isEqualTo(48);
+    }
+
+    @Test
+    void aFlightBodyCanNameTheWeeksItGoesDark() {
+        Map<String, Object> flight = new LinkedHashMap<>();
+        flight.put("first", "2025-08-04");
+        flight.put("last", "2025-08-29");
+        flight.put("days", "M-F");
+        flight.put("per_week", 12);
+        flight.put("dark", List.of("2025-08-13"));
+        Line line = lineIn(aLineBody("flight", flight)).toDomain();
+        assertThat(line.flight().dark()).containsExactly(new BroadcastWeek(LocalDate.of(2025, 8, 11)));
+        assertThat(line.spots()).isEqualTo(36);
+        LineOut out = LineOut.of(line);
+        assertThat(out.flight().dark()).containsExactly(LocalDate.of(2025, 8, 11));
+        assertThat(out.flight().spots()).isEqualTo(36);
+        assertThat(LineOut.of(aLine()).flight().dark()).isEmpty();
     }
 
     @Test

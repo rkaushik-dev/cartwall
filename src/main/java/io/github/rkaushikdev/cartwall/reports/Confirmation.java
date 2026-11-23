@@ -10,7 +10,6 @@ import io.github.rkaushikdev.cartwall.domain.Line;
 import io.github.rkaushikdev.cartwall.domain.Order;
 import io.github.rkaushikdev.cartwall.domain.Weekday;
 import java.math.BigDecimal;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -20,8 +19,9 @@ import java.util.Optional;
  *
  * <p>The agency checks it against its own buy before the flight starts, which is the cheapest time
  * there will ever be to find a mistake. So it says everything the invoice will later rely on: the
- * lines as entered, the stub weeks the house rounded down, what each broadcast month will bill,
- * and gross, commission and net at the rate the account carries today.
+ * lines as entered, the stub weeks the house rounded down and the weeks the buy goes dark, what
+ * each broadcast month will bill, and gross, commission and net at the rate the account carries
+ * today.
  *
  * @param order the order being confirmed
  * @param advertiser whose order it is
@@ -74,20 +74,23 @@ public record Confirmation(
 
     /** Every week a line runs short of its full count, line by line, in week order. */
     public List<Stub> stubs() {
-        List<Stub> found = new ArrayList<>();
-        for (Line line : order.lines()) {
-            for (BroadcastWeek week : line.flight().weeks()) {
-                int days = line.flight().daysIn(week).size();
-                if (days > 0 && days < line.flight().fullWeekDays()) {
-                    found.add(new Stub(
-                            line.number(),
-                            week,
-                            line.flight().countIn(week),
-                            line.flight().perWeek()));
-                }
-            }
-        }
-        return List.copyOf(found);
+        return order.lines().stream()
+                .flatMap(line -> line.flight().weeks().stream()
+                        .filter(line.flight()::isStub)
+                        .map(week -> new Stub(
+                                line.number(),
+                                week,
+                                line.flight().countIn(week),
+                                line.flight().perWeek())))
+                .toList();
+    }
+
+    /** One row per line that goes dark, naming the weeks it bought nothing in. */
+    public List<String> darkWeeks() {
+        return order.lines().stream()
+                .filter(line -> !line.flight().dark().isEmpty())
+                .map(line -> "line " + line.number() + " dark " + line.flight().showDark())
+                .toList();
     }
 
     /** The document, as it is faxed or mailed back. */
@@ -113,6 +116,10 @@ public record Confirmation(
         List<Stub> stubs = stubs();
         if (!stubs.isEmpty()) {
             form.blank().text("STUB WEEKS").rows(stubs, "");
+        }
+        List<String> dark = darkWeeks();
+        if (!dark.isEmpty()) {
+            form.blank().text("DARK WEEKS").rows(dark, "");
         }
         form.blank().text("BY MONTH");
         for (Map.Entry<BroadcastMonth, Money> month : order.valueByMonth().entrySet()) {

@@ -282,6 +282,24 @@ class MappersTest {
     }
 
     @Test
+    void aLineGoesDarkInTheSameWeeksAfterTheRoundTrip() {
+        Line line = aLine().withCarts(List.of());
+        Line dark = new Line(
+                line.number(),
+                line.station(),
+                line.daypart(),
+                line.grade(),
+                line.length(),
+                line.rate(),
+                line.flight().goingDark(List.of(LocalDate.of(2025, 8, 11), LocalDate.of(2025, 8, 25))));
+        LineRow row = Mappers.lineRow(dark, "");
+        assertThat(row.getDarkWeeks()).isEqualTo("2025-08-11,2025-08-25");
+        assertThat(Mappers.lineFrom(row)).isEqualTo(dark);
+        assertThat(Mappers.lineFrom(row).spots()).isEqualTo(24);
+        assertThat(Mappers.lineRow(line, "").getDarkWeeks()).isEmpty();
+    }
+
+    @Test
     void aLinesCartsSurviveTheRoundTripInOrder() {
         Line line = aLine(1, List.of("C1204", "C1205", "C1206"));
         assertThat(Mappers.lineFrom(Mappers.lineRow(line, "")).carts()).containsExactly("C1204", "C1205", "C1206");
