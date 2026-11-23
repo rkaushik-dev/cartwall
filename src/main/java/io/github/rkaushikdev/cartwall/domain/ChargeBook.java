@@ -3,6 +3,7 @@ package io.github.rkaushikdev.cartwall.domain;
 import io.github.rkaushikdev.cartwall.Money;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -50,13 +51,9 @@ public final class ChargeBook {
         if (last.isBefore(first)) {
             throw new PoliticalError("the window runs backwards");
         }
+        Charge asked = new Charge(station, daypart, grade, length, Money.ZERO, first);
         return charges.stream()
-                .filter(charge -> charge.station().equals(station)
-                        && charge.daypart().equals(daypart)
-                        && charge.grade() == grade
-                        && charge.length().equals(length)
-                        && !charge.day().isBefore(first)
-                        && !charge.day().isAfter(last))
+                .filter(charge -> charge.comparableTo(asked) && charge.within(first, last))
                 .map(Charge::rate)
                 .min(Comparator.naturalOrder());
     }
@@ -90,13 +87,11 @@ public final class ChargeBook {
     /** The class with the lowest charge, for a buyer who did not name one. A tie goes to the better class. */
     public Optional<Cheapest> cheapestClass(
             String station, String daypart, SpotLength length, LocalDate first, LocalDate last) {
-        List<Cheapest> found = new ArrayList<>();
-        for (ClassOfTime grade : ClassOfTime.values()) {
-            lowest(station, daypart, grade, length, first, last)
-                    .ifPresent(lowest -> found.add(new Cheapest(grade, lowest)));
-        }
-        return found.stream().min(Comparator.comparing(Cheapest::lowest).thenComparingInt(cheapest -> -cheapest.grade()
-                .rank()));
+        return Arrays.stream(ClassOfTime.values())
+                .flatMap(grade -> lowest(station, daypart, grade, length, first, last).stream()
+                        .map(lowest -> new Cheapest(grade, lowest)))
+                .min(Comparator.comparing(Cheapest::lowest)
+                        .thenComparingInt(cheapest -> -cheapest.grade().rank()));
     }
 
     public int size() {

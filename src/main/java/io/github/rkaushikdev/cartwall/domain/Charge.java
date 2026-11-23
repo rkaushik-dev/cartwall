@@ -36,6 +36,11 @@ public record Charge(
                 && length.equals(other.length);
     }
 
+    /** Whether it aired inside the inclusive span. */
+    public boolean within(LocalDate first, LocalDate last) {
+        return !day.isBefore(first) && !day.isAfter(last);
+    }
+
     @Override
     public String toString() {
         return station + " " + daypart + " " + grade.value() + " " + length + " " + rate;
