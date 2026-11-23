@@ -12,6 +12,7 @@ import io.github.rkaushikdev.cartwall.api.Schemas.OrderOut;
 import io.github.rkaushikdev.cartwall.api.Work;
 import io.github.rkaushikdev.cartwall.domain.Order;
 import io.github.rkaushikdev.cartwall.domain.OrderError;
+import io.github.rkaushikdev.cartwall.domain.Revision;
 import io.github.rkaushikdev.cartwall.services.Audit;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -96,6 +97,7 @@ public class OrdersController {
                         Details.of("order", number));
             }
             Order order = body.toDomain();
+            Revision revision = Revision.between(existing, order);
             uow.orders().save(order);
             Audit.tryRecord(
                     uow.entityManager(),
@@ -103,8 +105,8 @@ public class OrdersController {
                     caller.name(),
                     "order",
                     order.number(),
-                    field("lines", order.size()),
-                    field("value", order.value().toString()));
+                    field("changes", revision.summary()),
+                    field("value", revision.valueChange().toString()));
             return OrderOut.of(order);
         });
     }

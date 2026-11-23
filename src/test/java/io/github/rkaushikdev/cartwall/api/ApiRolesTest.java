@@ -187,6 +187,19 @@ class ApiRolesTest {
     }
 
     @Test
+    void aRewriteSaysOnTheTrailWhatChanged() {
+        seller.postJson("/orders", anOrder());
+        Map<String, Object> cheaper = anOrder();
+        Map<String, Object> line = aLine();
+        line.put("rate", "55.00");
+        cheaper.put("lines", List.of(line));
+        seller.putJson("/orders/25-1044", cheaper);
+        Audit.Entry rewritten = about("order", "25-1044").get(1);
+        assertThat(rewritten.action()).isEqualTo("order.rewritten");
+        assertThat(rewritten.detail()).contains("line 1: rate $60.00 to $55.00").contains("-$50.00");
+    }
+
+    @Test
     void aRefusedWriteLeavesNothingOnTheTrail() {
         reader.postJson("/orders", anOrder());
         assertThat(about("order", "25-1044")).isEmpty();

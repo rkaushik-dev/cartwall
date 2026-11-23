@@ -125,4 +125,18 @@ class ConfirmationTest {
                 .doesNotContain("FLIGHT")
                 .contains("GROSS        $0.00\n");
     }
+
+    @Test
+    void aRewriteGoesBackHeadedAsARevisionWithTheChangesFirst() {
+        Order rev2 = aDealerOrder().withLines(List.of(aLine(1).rate("55.00").build()));
+        String text = Confirmation.of(rev2, Fixtures.accounts()).revising(aDealerOrder());
+        assertThat(text)
+                .startsWith("REVISED ORDER CONFIRMATION\n\n")
+                .contains("CHANGES\n  line 1: rate $60.00 to $55.00\n  line 2 dropped: ")
+                .contains("VALUE        $3,915.00 to $2,640.00\n")
+                .contains("GROSS        $2,640.00\n");
+        assertThat(text.indexOf("CHANGES")).isLessThan(text.indexOf("    1  KWLO"));
+        assertThat(Confirmation.of(aDealerOrder(), Fixtures.accounts()).revising(aDealerOrder()))
+                .contains("CHANGES\n  nothing changed\n");
+    }
 }

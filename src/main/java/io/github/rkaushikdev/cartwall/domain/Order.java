@@ -5,7 +5,6 @@ import io.github.rkaushikdev.cartwall.BroadcastWeek;
 import io.github.rkaushikdev.cartwall.Money;
 import java.time.LocalDate;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
@@ -68,12 +67,14 @@ public record Order(
         this(number, advertiser, written, salesperson, lines, OrderStatus.PENDING, Optional.empty(), "");
     }
 
+    /** The line with this number, when the order has one. */
+    public Optional<Line> findLine(int number) {
+        return lines.stream().filter(line -> line.number() == number).findFirst();
+    }
+
     /** The line with this number. */
     public Line line(int number) {
-        return lines.stream()
-                .filter(line -> line.number() == number)
-                .findFirst()
-                .orElseThrow(() -> new OrderError("order " + this.number + " has no line " + number));
+        return findLine(number).orElseThrow(() -> new OrderError("order " + this.number + " has no line " + number));
     }
 
     public int spots() {
@@ -85,17 +86,21 @@ public record Order(
     }
 
     public LocalDate firstAir() {
-        return lines.stream()
-                .map(line -> line.flight().first())
-                .min(Comparator.naturalOrder())
-                .orElseThrow(() -> new OrderError("order " + number + " has no lines"));
+        return airDates().first();
     }
 
     public LocalDate lastAir() {
-        return lines.stream()
-                .map(line -> line.flight().last())
-                .max(Comparator.naturalOrder())
-                .orElseThrow(() -> new OrderError("order " + number + " has no lines"));
+        return airDates().last();
+    }
+
+    private TreeSet<LocalDate> airDates() {
+        if (lines.isEmpty()) {
+            throw new OrderError("order " + number + " has no lines");
+        }
+        TreeSet<LocalDate> ends = new TreeSet<>();
+        lines.forEach(
+                line -> ends.addAll(List.of(line.flight().first(), line.flight().last())));
+        return ends;
     }
 
     /** The stations the order buys, in line order, without repeats. */

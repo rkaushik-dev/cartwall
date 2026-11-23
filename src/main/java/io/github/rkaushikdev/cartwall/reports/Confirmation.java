@@ -8,6 +8,7 @@ import io.github.rkaushikdev.cartwall.domain.Advertiser;
 import io.github.rkaushikdev.cartwall.domain.Agency;
 import io.github.rkaushikdev.cartwall.domain.Line;
 import io.github.rkaushikdev.cartwall.domain.Order;
+import io.github.rkaushikdev.cartwall.domain.Revision;
 import io.github.rkaushikdev.cartwall.domain.Weekday;
 import java.math.BigDecimal;
 import java.util.List;
@@ -95,7 +96,19 @@ public record Confirmation(
 
     /** The document, as it is faxed or mailed back. */
     public String render() {
-        Form form = new Form("ORDER CONFIRMATION")
+        return render(Optional.empty());
+    }
+
+    /**
+     * The document sent back after a rewrite: the same confirmation, headed as a revision, with
+     * what changed from {@code previous} listed before the lines.
+     */
+    public String revising(Order previous) {
+        return render(Optional.of(Revision.between(previous, order)));
+    }
+
+    private String render(Optional<Revision> revision) {
+        Form form = new Form(revision.isPresent() ? "REVISED ORDER CONFIRMATION" : "ORDER CONFIRMATION")
                 .field("ORDER", order.number())
                 .field("ADVERTISER", advertiser.name() + " (" + advertiser.code() + ")")
                 .field(
@@ -112,6 +125,10 @@ public record Confirmation(
                     "FLIGHT",
                     Ran.SWORN_DATE.format(order.firstAir()) + " to " + Ran.SWORN_DATE.format(order.lastAir()));
         }
+        revision.ifPresent(changed -> form.blank()
+                .text("CHANGES")
+                .rows(changed.changes(), "nothing changed")
+                .field("VALUE", changed.was() + " to " + changed.now()));
         form.blank().rows(order.lines().stream().map(Confirmation::lineRow).toList(), "no lines entered");
         List<Stub> stubs = stubs();
         if (!stubs.isEmpty()) {
