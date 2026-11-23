@@ -237,4 +237,66 @@ class AsrunTest {
                 .isInstanceOf(AsRunError.class)
                 .hasMessageContaining("is missing title, length, status, reference");
     }
+
+    /** A night on the backup playout: its own column names, its own order, tabs between. */
+    static String aBackupFile(String... lines) {
+        List<String> all = new ArrayList<>();
+        all.add("Air Date\tAir Time\tTraffic ID\tCart\tDescription\tResult\tDuration");
+        all.addAll(List.of(lines));
+        return String.join("\r\n", all) + "\r\n";
+    }
+
+    @Test
+    void theBackupPlayoutsFileReadsLikeTheMainOne() {
+        List<AsRun> rows = parse(aBackupFile(
+                "08/04/2025\t07:10:00\t25-1044-1\tC1204\tHy-Vee sale\tPLAYED\t0:30.0",
+                "08/04/2025\t09:38:00\t25-1044-2\tC1205\t\"Hy-Vee\tfuel\"\tSKIP\t1:00"));
+        assertThat(rows).hasSize(2);
+        AsRun first = rows.get(0);
+        assertThat(first.day()).isEqualTo(MONDAY);
+        assertThat(first.at()).isEqualTo(AirTime.at(7, 10));
+        assertThat(first.cart()).isEqualTo("C1204");
+        assertThat(first.length()).isEqualTo(new Duration(300));
+        assertThat(first.status()).isSameAs(Played.PLAYED);
+        assertThat(first.key()).contains(new LineKey("25-1044", 1));
+        assertThat(rows.get(1).title()).isEqualTo("Hy-Vee\tfuel");
+        assertThat(rows.get(1).length()).isEqualTo(Duration.ofSeconds(60));
+        assertThat(rows.get(1).aired()).isFalse();
+    }
+
+    @Test
+    void theColumnsCanComeInAnyOrderButEachOnlyOnce() {
+        String reordered = "reference,cart,date,time,title,status,length,station\n"
+                + "25-1044-1,C1204,2025-08-04,07:10:00,Hy-Vee sale,played,30.0,KWLO\n";
+        assertThat(parse(reordered)).extracting(AsRun::cart).containsExactly("C1204");
+        assertThatThrownBy(() -> parse("date,time,cart,title,length,status,reference,ref\n"))
+                .isInstanceOf(AsRunError.class)
+                .hasMessageContaining(
+                        "the as-run header is date, time, cart, title, length, status, reference, reference");
+    }
+
+    @Test
+    void aHeaderCellIsReadForWhatItNames() {
+        assertThat(AsRunFile.columnName("  Air   Time ")).isEqualTo("time");
+        assertThat(AsRunFile.columnName("DUR")).isEqualTo("length");
+        assertThat(AsRunFile.columnName("Cart")).isEqualTo("cart");
+        assertThat(AsRunFile.columnName("Station")).isEqualTo("station");
+    }
+
+    @Test
+    void aBackupDateOrLengthThatIsNotOne() {
+        assertThatThrownBy(() -> parse(aBackupFile("13/45/2025\t07:10:00\t25-1044-1\tC1204\tx\tPLAYED\t0:30.0")))
+                .isInstanceOf(AsRunError.class)
+                .hasMessageContaining("'13/45/2025' is not a date");
+        assertThatThrownBy(() -> parse(aBackupFile("08/04/2025\t07:10:00\t25-1044-1\tC1204\tx\tPLAYED\t0:3x")))
+                .isInstanceOf(AsRunError.class)
+                .hasMessageContaining("'0:3x' is not a length");
+    }
+
+    @Test
+    void aTabInsideACommaFileIsJustPartOfTheField() {
+        List<List<String>> records = Csv.records("a,\"b,c\",d\te\n\n\"say \"\"hi\"\"\",x\n");
+        assertThat(records).containsExactly(List.of("a", "b,c", "d\te"), List.of("say \"hi\"", "x"));
+        assertThat(Csv.records("a\t\"b\tc\"\td\n", '\t')).containsExactly(List.of("a", "b\tc", "d"));
+    }
 }

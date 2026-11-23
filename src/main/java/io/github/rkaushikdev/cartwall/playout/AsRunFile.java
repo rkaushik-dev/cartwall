@@ -22,11 +22,30 @@ import java.util.Map;
  * <p>The as-run file is a different format from the log file and that is not an oversight: the
  * as-run export was added a decade later by different people, and it is comma separated with a
  * header row. Two formats is annoying and pretending they are one is worse, so they stay apart.
+ *
+ * <p>The backup playout writes the same facts its own way: tab separated, its own names for the
+ * columns in its own order, US dates and lengths in minutes and seconds. A night on the backup
+ * still has to be posted, so the header is read for what each column is called rather than
+ * checked against one spelling, and the file is tab separated when its header is.
  */
 public final class AsRunFile {
 
     /** The header the automation writes. Read, and checked, never assumed. */
     public static final List<String> HEADER = List.of("date", "time", "cart", "title", "length", "status", "reference");
+
+    /** What the backup playout calls each column, and the column it means. */
+    static final Map<String, String> ALIASES = Map.of(
+            "air date", "date",
+            "air time", "time",
+            "start", "time",
+            "description", "title",
+            "duration", "length",
+            "dur", "length",
+            "result", "status",
+            "traffic id", "reference",
+            "ref", "reference");
+
+    private static final DateTimeFormatter US_DATE = DateTimeFormatter.ofPattern("MM/dd/yyyy", Locale.ROOT);
 
     private static final DateTimeFormatter NAMED = DateTimeFormatter.ofPattern("yyMMdd", Locale.ROOT);
 
@@ -34,14 +53,14 @@ public final class AsRunFile {
 
     /** The whole file, in the order the automation wrote it. */
     public static List<AsRun> parse(String text) {
-        List<List<String>> records = Csv.records(text);
+        String firstLine =
+                text.lines().filter(line -> !line.isBlank()).findFirst().orElse("");
+        List<List<String>> records = Csv.records(text, firstLine.indexOf('\t') >= 0 ? '\t' : ',');
         if (records.isEmpty()) {
             throw new AsRunError("the as-run file is empty");
         }
-        List<String> header = records.get(0).stream()
-                .map(name -> name.strip().toLowerCase(Locale.ROOT))
-                .toList();
-        if (!header.equals(HEADER)) {
+        List<String> header = records.get(0).stream().map(AsRunFile::columnName).toList();
+        if (!header.containsAll(HEADER) || header.stream().distinct().count() != header.size()) {
             throw new AsRunError(
                     "the as-run header is " + String.join(", ", header) + ", expected " + String.join(", ", HEADER),
                     Details.of("header", header));
@@ -57,6 +76,12 @@ public final class AsRunFile {
         return List.copyOf(rows);
     }
 
+    /** What a header cell names, in the main automation's words. */
+    static String columnName(String written) {
+        String name = written.strip().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
+        return ALIASES.getOrDefault(name, name);
+    }
+
     /** One line, by column name. A short line is missing the columns it did not reach. */
     public static AsRun parseLine(Map<String, String> row) {
         List<String> missing =
@@ -65,12 +90,7 @@ public final class AsRunFile {
             throw new AsRunError(
                     "the as-run line is missing " + String.join(", ", missing), Details.of("missing", missing));
         }
-        LocalDate day;
-        try {
-            day = LocalDate.parse(row.get("date").strip());
-        } catch (DateTimeParseException notADate) {
-            throw new AsRunError("'" + row.get("date") + "' is not a date");
-        }
+        LocalDate day = date(row.get("date"));
         AirTime at;
         try {
             at = AirTime.parse(row.get("time"));
@@ -116,11 +136,31 @@ public final class AsRunFile {
         return day.atTime(at.hour(), at.minute(), at.second());
     }
 
-    /** The automation writes seconds with one decimal, or bare tenths. */
+    /** {@code 2025-08-04} from the automation, {@code 08/04/2025} from the backup. */
+    static LocalDate date(String text) {
+        String cleaned = text.strip();
+        try {
+            return cleaned.contains("/") ? LocalDate.parse(cleaned, US_DATE) : LocalDate.parse(cleaned);
+        } catch (DateTimeParseException notADate) {
+            throw new AsRunError("'" + text + "' is not a date");
+        }
+    }
+
+    /**
+     * The automation writes seconds with one decimal, or bare tenths; the backup writes minutes and
+     * seconds, {@code 0:30.0}.
+     */
     static Duration length(String text) {
         String cleaned = text.strip();
         if (cleaned.isEmpty()) {
             throw new AsRunError("an as-run line has no length");
+        }
+        if (cleaned.contains(":")) {
+            try {
+                return Duration.parse(cleaned);
+            } catch (TimeError notALength) {
+                throw new AsRunError("'" + text + "' is not a length");
+            }
         }
         int point = cleaned.indexOf('.');
         if (point >= 0) {
