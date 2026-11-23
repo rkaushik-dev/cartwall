@@ -8,6 +8,7 @@ import static io.github.rkaushikdev.cartwall.services.Owing.bumped;
 import static io.github.rkaushikdev.cartwall.services.Owing.didNotRun;
 import static io.github.rkaushikdev.cartwall.services.Owing.gather;
 import static io.github.rkaushikdev.cartwall.services.Owing.neverScheduled;
+import static io.github.rkaushikdev.cartwall.services.Owing.ranOutsideDaypart;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -15,6 +16,7 @@ import io.github.rkaushikdev.cartwall.BroadcastWeek;
 import io.github.rkaushikdev.cartwall.HouseLog;
 import io.github.rkaushikdev.cartwall.Money;
 import io.github.rkaushikdev.cartwall.domain.ClassOfTime;
+import io.github.rkaushikdev.cartwall.domain.DaypartGrid;
 import io.github.rkaushikdev.cartwall.domain.Flight;
 import io.github.rkaushikdev.cartwall.domain.Line;
 import io.github.rkaushikdev.cartwall.domain.Order;
@@ -124,6 +126,51 @@ class OwingTest {
             aDay(uow, oneSpot(9), List.of(), MONDAY, true);
             assertThat(didNotRun(uow, MONDAY, SUNDAY)).isEmpty();
         }
+    }
+
+    @Test
+    void aSpotThatRanOutsideItsDaypartIsOwedAtTheLinesRate() {
+        List<Debt> owed;
+        try (UnitOfWork uow = engine.unitOfWork()) {
+            uow.stations().saveDayparts("KWLO", DaypartGrid.standardGrid());
+            uow.orders().save(anOrder(2));
+            aDay(
+                    uow,
+                    List.of(new Spot(7, 2, "25-1044", 1), new Spot(9, 2, "25-1044", 1)),
+                    List.of(ran("11:30:00"), ran("09:58:00")),
+                    MONDAY,
+                    true);
+            owed = ranOutsideDaypart(uow, MONDAY, SUNDAY);
+            assertThat(didNotRun(uow, MONDAY, SUNDAY)).isEmpty();
+        }
+        assertThat(owed).hasSize(1);
+        assertThat(owed.get(0).cause()).isSameAs(Cause.OUT_OF_DAYPART);
+        assertThat(owed.get(0).daypart()).isEqualTo("AMD");
+        assertThat(owed.get(0).rate()).isEqualTo(Money.dollars(60));
+        assertThat(owed.get(0).day()).isEqualTo(MONDAY);
+        assertThat(Cause.fromValue("ran outside its daypart")).isSameAs(Cause.OUT_OF_DAYPART);
+    }
+
+    @Test
+    void aStationWithNoDaypartsOnFileCannotBeJudged() {
+        try (UnitOfWork uow = engine.unitOfWork()) {
+            uow.orders().save(anOrder(1));
+            aDay(uow, oneSpot(1), List.of(ran("23:30:00")), MONDAY, true);
+            assertThat(ranOutsideDaypart(uow, MONDAY, SUNDAY)).isEmpty();
+        }
+    }
+
+    @Test
+    void theGatherPutsTheOutOfDaypartSpotsOnTheLedgerToo() {
+        Ledger ledger;
+        try (UnitOfWork uow = engine.unitOfWork()) {
+            uow.stations().saveDayparts("KWLO", DaypartGrid.standardGrid());
+            uow.orders().save(anOrder(1));
+            aDay(uow, oneSpot(1), List.of(ran("19:10:00")), MONDAY, true);
+            ledger = HouseLog.quietly(() -> gather(uow, MONDAY, SUNDAY, false));
+        }
+        assertThat(ledger.byCause()).containsEntry("ran outside its daypart", 1);
+        assertThat(ledger.owedValue()).isEqualTo(Money.dollars(60));
     }
 
     @Test

@@ -1,8 +1,9 @@
 package io.github.rkaushikdev.cartwall.services;
 
-/** Why a spot is owed. Three sources, three different reports. */
+/** Why a spot is owed. Each source is its own report. */
 public enum Cause {
     DID_NOT_RUN("did not run"),
+    OUT_OF_DAYPART("ran outside its daypart"),
     BUMPED("bumped"),
     NEVER_SCHEDULED("never scheduled");
 
