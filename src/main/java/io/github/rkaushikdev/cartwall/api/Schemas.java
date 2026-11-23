@@ -42,15 +42,17 @@ public final class Schemas {
                     @Min(value = 1, message = "Input should be greater than or equal to 1")
                     @Max(value = 500, message = "Input should be less than or equal to 500")
                     Integer perWeek,
-            List<LocalDate> dark) {
+            List<LocalDate> dark,
+            @Min(value = 0, message = "Input should be greater than or equal to 0") Integer dailyCap) {
 
         public FlightIn {
             dark = dark == null ? List.of() : List.copyOf(dark);
+            dailyCap = dailyCap == null ? 0 : dailyCap;
         }
 
-        /** The flight, dark in the week holding each date given. */
+        /** The flight, dark in the week holding each date given, capped at so many a day. */
         public Flight toDomain() {
-            return Flight.build(first, last, days, perWeek).goingDark(dark);
+            return Flight.build(first, last, days, perWeek).goingDark(dark).cappedAt(dailyCap);
         }
     }
 
@@ -115,7 +117,7 @@ public final class Schemas {
 
     /** A flight as a response writes it out. */
     public record FlightOut(
-            LocalDate first, LocalDate last, String days, int perWeek, int spots, List<LocalDate> dark) {}
+            LocalDate first, LocalDate last, String days, int perWeek, int spots, List<LocalDate> dark, int dailyCap) {}
 
     /** One line of an order as a response writes it out, its money as strings. */
     public record LineOut(
@@ -148,7 +150,8 @@ public final class Schemas {
                             line.flight().spots(),
                             line.flight().dark().stream()
                                     .map(BroadcastWeek::start)
-                                    .toList()),
+                                    .toList(),
+                            line.flight().dailyCap()),
                     line.carts());
         }
     }

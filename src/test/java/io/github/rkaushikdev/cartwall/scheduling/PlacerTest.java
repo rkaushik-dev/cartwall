@@ -25,6 +25,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -100,6 +101,41 @@ class PlacerTest {
         assertThat(spread(3, 5)).containsExactly(1, 1, 1, 0, 0);
         assertThat(spread(0, 5)).containsExactly(0, 0, 0, 0, 0);
         assertThat(spread(47, 7).stream().mapToInt(Integer::intValue).sum()).isEqualTo(47);
+    }
+
+    @Test
+    void aCappedSpreadNeverPutsMoreThanTheCapInABucket() {
+        assertThat(spread(12, 5, 2)).containsExactly(2, 2, 2, 2, 2);
+        assertThat(spread(12, 5, 3)).containsExactly(3, 3, 2, 2, 2);
+        assertThat(spread(12, 5, 0)).containsExactly(3, 3, 2, 2, 2);
+    }
+
+    @Test
+    void aCappedLineSpillsOnlyOntoDaysUnderTheCap() {
+        fill(lays.get(0), "VGM");
+        Result result = Placer.placeWeek(lays, accounts, anAsk(), 10, Optional.empty(), 3);
+        assertThat(result.isComplete()).isTrue();
+        assertThat(on(result, MONDAY)).isEmpty();
+        for (LocalDate day : WEEKDAYS.subList(1, 5)) {
+            assertThat(on(result, day)).hasSizeLessThanOrEqualTo(3);
+        }
+        assertThat(on(result, MONDAY.plusDays(1))).hasSize(3);
+        assertThat(result.landed()).hasSize(10);
+    }
+
+    @Test
+    void whatTheCapLeavesNowhereToGoIsMissedWithTheReason() {
+        fill(lays.get(0), "VGM");
+        fill(lays.get(1), "VGM");
+        Result result = Placer.placeWeek(lays, accounts, anAsk(), 10, Optional.empty(), 2);
+        assertThat(result.landed()).hasSize(6);
+        assertThat(result.missed()).hasSize(4);
+        Result over = Placer.placeWeek(
+                lays.subList(2, 5), accounts, anAsk("HYVEE", "AMD", THIRTY, "", 2), 8, Optional.empty(), 2);
+        assertThat(over.landed()).hasSize(6);
+        assertThat(over.missed())
+                .extracting(Miss::reason)
+                .containsExactly("the line runs no more than 2 a day", "the line runs no more than 2 a day");
     }
 
     @Test

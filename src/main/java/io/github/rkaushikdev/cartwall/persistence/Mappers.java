@@ -313,6 +313,7 @@ public final class Mappers {
         row.setDarkWeeks(line.flight().dark().stream()
                 .map(week -> week.start().toString())
                 .collect(Collectors.joining(",")));
+        row.setDailyCap(line.flight().dailyCap());
         List<Slice> carts = rotation.map(Rotation::slices)
                 .orElseGet(() -> line.carts().stream().map(Slice::new).toList());
         RotationKind kind = rotation.map(Rotation::kind).orElse(RotationKind.EVEN);
@@ -341,7 +342,8 @@ public final class Mappers {
                         Arrays.stream(row.getDarkWeeks().split(","))
                                 .filter(monday -> !monday.isEmpty())
                                 .map(monday -> new BroadcastWeek(LocalDate.parse(monday)))
-                                .collect(Collectors.toSet())),
+                                .collect(Collectors.toSet()),
+                        row.getDailyCap()),
                 row.getRotation().stream().map(RotationRow::getCart).toList());
     }
 

@@ -160,6 +160,22 @@ class OrderTest {
     }
 
     @Test
+    void aCapHasToLeaveRoomForTheWeeklyCount() {
+        assertThat(aFlight().cappedAt(3).dailyCap()).isEqualTo(3);
+        assertThat(aFlight().cappedAt(3).isCapped()).isTrue();
+        assertThat(aFlight().isCapped()).isFalse();
+        assertThatThrownBy(() -> aFlight().cappedAt(2))
+                .isInstanceOf(OrderError.class)
+                .hasMessageContaining("12 a week at no more than 2 a day over M-F can never run");
+        assertThatThrownBy(() -> aFlight().cappedAt(-1))
+                .isInstanceOf(OrderError.class)
+                .hasMessageContaining("-1 a day is not a cap");
+        assertThat(aFlight().cappedAt(3)).hasToString("08/04-08/29 M-F 12x max 3/day");
+        assertThat(aFlight().goingDark(List.of(END)).cappedAt(3).dark()).hasSize(1);
+        assertThat(aFlight().cappedAt(3).goingDark(List.of(END)).dailyCap()).isEqualTo(3);
+    }
+
+    @Test
     void aLineThatCannotBeWritten() {
         assertThatThrownBy(() -> aLine(0).build())
                 .isInstanceOf(OrderError.class)

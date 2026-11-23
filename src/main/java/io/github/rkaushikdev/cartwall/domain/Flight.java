@@ -24,13 +24,19 @@ import java.util.stream.Collectors;
  * stretches a budget over a season: two weeks on, one off. A dark week carries nothing, is not a
  * stub, and is not owed; it is a week the client did not buy.
  *
+ * <p>And a buyer can cap the spots a day, so twelve a week does not land as six on Monday when
+ * the rest of the week is tight. The cap has to leave room for the weekly count, or the flight
+ * was sold a schedule it can never run.
+ *
  * @param first the first day it may air
  * @param last the last day it may air
  * @param days the weekdays it airs on
  * @param perWeek spots in a whole week
  * @param dark the broadcast weeks inside the flight the client bought nothing in
+ * @param dailyCap the most spots a day; zero when the buyer set no cap
  */
-public record Flight(LocalDate first, LocalDate last, Set<Weekday> days, int perWeek, Set<BroadcastWeek> dark) {
+public record Flight(
+        LocalDate first, LocalDate last, Set<Weekday> days, int perWeek, Set<BroadcastWeek> dark, int dailyCap) {
 
     private static final DateTimeFormatter MONTH_DAY = DateTimeFormatter.ofPattern("MM/dd", Locale.ROOT);
 
@@ -55,11 +61,23 @@ public record Flight(LocalDate first, LocalDate last, Set<Weekday> days, int per
         if (dark.size() == touched.size()) {
             throw new OrderError("a flight dark in every week it touches buys nothing");
         }
+        if (dailyCap < 0) {
+            throw new OrderError(dailyCap + " a day is not a cap");
+        }
+        if (dailyCap > 0 && dailyCap * days.size() < perWeek) {
+            throw new OrderError(perWeek + " a week at no more than " + dailyCap + " a day over "
+                    + Weekday.showDays(days) + " can never run");
+        }
     }
 
-    /** A flight that runs every week it touches. */
+    /** A flight that runs every week it touches, as many a day as fit. */
     public Flight(LocalDate first, LocalDate last, Set<Weekday> days, int perWeek) {
-        this(first, last, days, perWeek, Set.of());
+        this(first, last, days, perWeek, Set.of(), 0);
+    }
+
+    /** A flight with dark weeks and no daily cap. */
+    public Flight(LocalDate first, LocalDate last, Set<Weekday> days, int perWeek, Set<BroadcastWeek> dark) {
+        this(first, last, days, perWeek, dark, 0);
     }
 
     /** A flight with its days written the way the order writes them, such as {@code M-F}. */
@@ -71,7 +89,17 @@ public record Flight(LocalDate first, LocalDate last, Set<Weekday> days, int per
     public Flight goingDark(List<LocalDate> days) {
         Set<BroadcastWeek> weeks = new TreeSet<>(dark);
         days.forEach(day -> weeks.add(BroadcastWeek.of(day)));
-        return new Flight(first, last, this.days, perWeek, weeks);
+        return new Flight(first, last, this.days, perWeek, weeks, dailyCap);
+    }
+
+    /** The same flight, never more than {@code cap} spots on one day. */
+    public Flight cappedAt(int cap) {
+        return new Flight(first, last, days, perWeek, dark, cap);
+    }
+
+    /** Whether the buyer limited the spots a day. */
+    public boolean isCapped() {
+        return dailyCap > 0;
     }
 
     /** Every broadcast week the flight touches. */
@@ -150,6 +178,9 @@ public record Flight(LocalDate first, LocalDate last, Set<Weekday> days, int per
     public String toString() {
         String text = MONTH_DAY.format(first) + "-" + MONTH_DAY.format(last) + " " + Weekday.showDays(days) + " "
                 + perWeek + "x";
+        if (isCapped()) {
+            text += " max " + dailyCap + "/day";
+        }
         return dark.isEmpty() ? text : text + " dark " + showDark();
     }
 }

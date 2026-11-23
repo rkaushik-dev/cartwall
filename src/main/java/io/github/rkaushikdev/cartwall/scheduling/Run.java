@@ -75,7 +75,8 @@ public final class Run {
             if (rotation.isEmpty() && line.carts().size() > 1) {
                 rotation = Optional.of(Rotation.even(line.carts().toArray(String[]::new)));
             }
-            Result placed = Placer.placeWeek(lays, accounts, ask, count, rotation);
+            Result placed = Placer.placeWeek(
+                    lays, accounts, ask, count, rotation, line.flight().dailyCap());
             results.add(new LineResult(line, week, placed));
         }
         results.sort(Comparator.comparingInt(entry -> entry.line().number()));

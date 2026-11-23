@@ -89,6 +89,10 @@ public class LineRow {
     @Column(name = "dark_weeks", length = 400, nullable = false)
     private String darkWeeks = "";
 
+    /** The most spots a day; zero when the buyer set no cap. */
+    @Column(name = "daily_cap", nullable = false)
+    private int dailyCap;
+
     @OneToMany(mappedBy = "line", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("position")
     private List<RotationRow> rotation = new ArrayList<>();
@@ -207,6 +211,14 @@ public class LineRow {
 
     public void setDarkWeeks(String darkWeeks) {
         this.darkWeeks = darkWeeks;
+    }
+
+    public int getDailyCap() {
+        return dailyCap;
+    }
+
+    public void setDailyCap(int dailyCap) {
+        this.dailyCap = dailyCap;
     }
 
     /** The rotation, in written order once read back. */

@@ -257,6 +257,20 @@ class ApiSchemasTest {
     }
 
     @Test
+    void aFlightBodyCanCapTheSpotsADay() {
+        Map<String, Object> flight = new LinkedHashMap<>();
+        flight.put("first", "2025-08-04");
+        flight.put("last", "2025-08-29");
+        flight.put("days", "M-F");
+        flight.put("per_week", 12);
+        flight.put("daily_cap", 3);
+        Line line = lineIn(aLineBody("flight", flight)).toDomain();
+        assertThat(line.flight().dailyCap()).isEqualTo(3);
+        assertThat(LineOut.of(line).flight().dailyCap()).isEqualTo(3);
+        assertThat(lineIn(aLineBody()).toDomain().flight().isCapped()).isFalse();
+    }
+
+    @Test
     void aLineComesBackWithItsFlightWrittenOut() {
         LineOut out = LineOut.of(aLine());
         assertThat(out.flight().days()).isEqualTo("M-F");

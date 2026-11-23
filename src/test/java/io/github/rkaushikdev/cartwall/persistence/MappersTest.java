@@ -300,6 +300,22 @@ class MappersTest {
     }
 
     @Test
+    void aLinesDailyCapSurvivesTheRoundTrip() {
+        Line line = aLine().withCarts(List.of());
+        Line capped = new Line(
+                line.number(),
+                line.station(),
+                line.daypart(),
+                line.grade(),
+                line.length(),
+                line.rate(),
+                line.flight().cappedAt(3));
+        assertThat(Mappers.lineRow(capped, "").getDailyCap()).isEqualTo(3);
+        assertThat(Mappers.lineFrom(Mappers.lineRow(capped, ""))).isEqualTo(capped);
+        assertThat(Mappers.lineRow(line, "").getDailyCap()).isZero();
+    }
+
+    @Test
     void aLinesCartsSurviveTheRoundTripInOrder() {
         Line line = aLine(1, List.of("C1204", "C1205", "C1206"));
         assertThat(Mappers.lineFrom(Mappers.lineRow(line, "")).carts()).containsExactly("C1204", "C1205", "C1206");

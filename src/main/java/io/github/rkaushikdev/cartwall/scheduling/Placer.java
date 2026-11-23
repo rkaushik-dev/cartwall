@@ -2,6 +2,7 @@ package io.github.rkaushikdev.cartwall.scheduling;
 
 import io.github.rkaushikdev.cartwall.domain.AccountBook;
 import io.github.rkaushikdev.cartwall.domain.Rotation;
+import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -22,6 +23,9 @@ import java.util.Optional;
  * <p>When a day cannot take its share, the leftovers spill onto the days that can. A spot the
  * client paid for goes somewhere in the week or on the miss list with a reason, and there is no
  * third outcome. Nothing here bumps anything; preemption is the next pass along.
+ *
+ * <p>A line the buyer capped at so many a day never goes over it, neither in the first spread nor
+ * when spilling: a day already at its cap is not somewhere a spilled spot can go.
  */
 public final class Placer {
 
@@ -44,6 +48,12 @@ public final class Placer {
         return List.copyOf(shares);
     }
 
+    /** Split {@code count} over {@code buckets}, extras to the front, none above {@code cap} when capped. */
+    public static List<Integer> spread(int count, int buckets, int cap) {
+        List<Integer> shares = spread(count, buckets);
+        return cap > 0 ? shares.stream().map(share -> Math.min(share, cap)).toList() : shares;
+    }
+
     /** Place {@code count} spots of {@code ask} across the days in {@code lays}. */
     public static Result placeWeek(List<Lay> lays, AccountBook accounts, Ask ask, int count) {
         return placeWeek(lays, accounts, ask, count, Optional.empty());
@@ -55,6 +65,16 @@ public final class Placer {
     }
 
     static Result placeWeek(List<Lay> lays, AccountBook accounts, Ask ask, int count, Optional<Rotation> rotation) {
+        return placeWeek(lays, accounts, ask, count, rotation, 0);
+    }
+
+    /**
+     * Place {@code count} spots of {@code ask}, never more than {@code cap} on one day.
+     *
+     * @param cap the line's daily cap; zero for none
+     */
+    static Result placeWeek(
+            List<Lay> lays, AccountBook accounts, Ask ask, int count, Optional<Rotation> rotation, int cap) {
         if (count < 0) {
             throw new PlacerError("cannot place a negative number of spots");
         }
@@ -67,37 +87,34 @@ public final class Placer {
 
         List<String> carts =
                 rotation.map(chosen -> chosen.assign(count)).orElse(Collections.nCopies(count, ask.cart()));
-        List<Integer> wanted = spread(count, lays.size());
-        List<Lay> spilledFrom = new ArrayList<>();
-        List<Integer> spilledAt = new ArrayList<>();
+        List<Integer> wanted = spread(count, lays.size(), cap);
+        List<Spill> spills = new ArrayList<>();
         int index = 0;
         for (int day = 0; day < lays.size(); day++) {
-            Lay lay = lays.get(day);
             for (int spot = 0; spot < wanted.get(day); spot++) {
-                Optional<Landed> landed = tryOne(lay, accounts, ask, carts.get(index));
-                if (landed.isPresent()) {
-                    result.land(landed.get());
-                } else {
-                    spilledFrom.add(lay);
-                    spilledAt.add(index);
-                }
-                index++;
+                Spill attempt = new Spill(lays.get(day), carts.get(index++));
+                tryOne(attempt.origin(), accounts, ask, attempt.cart(), cap)
+                        .ifPresentOrElse(result::land, () -> spills.add(attempt));
             }
         }
-        for (int spill = 0; spill < spilledFrom.size(); spill++) {
-            Lay origin = spilledFrom.get(spill);
-            Optional<Landed> landed = spillOver(lays, origin, accounts, ask, carts.get(spilledAt.get(spill)));
-            if (landed.isPresent()) {
-                result.land(landed.get());
-            } else {
-                result.miss(miss(origin, accounts, ask));
-            }
+        for (Spill spill : spills) {
+            spillOver(lays, spill, accounts, ask, cap)
+                    .ifPresentOrElse(result::land, () -> result.miss(miss(spill.origin(), accounts, ask)));
+        }
+        for (; index < count; index++) {
+            result.miss(new Miss(Optional.empty(), "the line runs no more than " + cap + " a day", Map.of()));
         }
         result.sortLanded();
         return result;
     }
 
-    private static Optional<Landed> tryOne(Lay lay, AccountBook accounts, Ask ask, String cart) {
+    /** A spot that could not go on the day it was spread to, and the cart it was going to play. */
+    private record Spill(Lay origin, String cart) {}
+
+    private static Optional<Landed> tryOne(Lay lay, AccountBook accounts, Ask ask, String cart, int cap) {
+        if (cap > 0 && lay.board().countFor(ask.order(), ask.line()) >= cap) {
+            return Optional.empty();
+        }
         Ask seeking = ask.withCart(cart);
         List<Opening> found = Candidates.openings(lay.board(), lay.book(), accounts, seeking, lay.neighbours());
         return pick(found, lay, ask).map(chosen -> Pinning.putSpot(lay, chosen.avail(), seeking, cart));
@@ -127,20 +144,15 @@ public final class Placer {
     }
 
     /** Try the other days, nearest first, when one day cannot take its share. */
-    private static Optional<Landed> spillOver(List<Lay> lays, Lay origin, AccountBook accounts, Ask ask, String cart) {
-        List<Lay> others = lays.stream()
-                .filter(lay -> lay != origin)
-                .sorted(Comparator.comparingLong(
-                                (Lay lay) -> Math.abs(ChronoUnit.DAYS.between(origin.day(), lay.day())))
+    private static Optional<Landed> spillOver(List<Lay> lays, Spill spill, AccountBook accounts, Ask ask, int cap) {
+        LocalDate from = spill.origin().day();
+        return lays.stream()
+                .filter(lay -> lay != spill.origin())
+                .sorted(Comparator.comparingLong((Lay lay) -> Math.abs(ChronoUnit.DAYS.between(from, lay.day())))
                         .thenComparing(Lay::day))
-                .toList();
-        for (Lay lay : others) {
-            Optional<Landed> landed = tryOne(lay, accounts, ask, cart);
-            if (landed.isPresent()) {
-                return landed;
-            }
-        }
-        return Optional.empty();
+                .map(lay -> tryOne(lay, accounts, ask, spill.cart(), cap))
+                .flatMap(Optional::stream)
+                .findFirst();
     }
 
     private static Miss miss(Lay lay, AccountBook accounts, Ask ask) {
