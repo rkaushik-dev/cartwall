@@ -4,8 +4,10 @@ import io.github.rkaushikdev.cartwall.AirTime;
 import io.github.rkaushikdev.cartwall.Duration;
 import java.time.LocalDate;
 import java.time.Month;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * The hours a daytimer's licence lets it be on the air, one sign-on and sign-off per month.
@@ -18,7 +20,8 @@ import java.util.List;
  *
  * <p>A break is on the air only when all of it is: it starts at or after sign-on and ends at or
  * before sign-off. A stopset that straddles sign-off is dead air the automation will never reach,
- * and a spot sold into it is a spot that cannot run.
+ * and a spot sold into it is a spot that cannot run. The legal ID is the exception that moves:
+ * the station has to identify itself at sign-on and sign-off whatever the clock says.
  *
  * @param months twelve windows, January first
  */
@@ -82,5 +85,37 @@ public record LicensedHours(List<Window> months) {
     /** Whether a break in hour {@code hour} of {@code day} is wholly on the air. */
     public boolean keeps(LocalDate day, int hour, Break stopset) {
         return on(day).holds(stopset.startsAt(hour), stopset.length());
+    }
+
+    /**
+     * The breaks of {@code clock} that go out in hour {@code hour} of {@code day}, in air order, with
+     * the station identified at sign-on and at sign-off.
+     *
+     * <p>The licence wants the call letters when the transmitter comes up and just before it goes
+     * down, as well as at the top of every hour. When sign-on falls partway into an hour the
+     * clock's top of hour ID is dead air, so the ID moves to the moment of sign-on; and the last
+     * hour gets a second ID that runs out exactly at sign-off. A clock with no legal ID in it has
+     * nothing to move.
+     */
+    public List<Break> onAir(LocalDate day, int hour, Clock clock) {
+        Window window = on(day);
+        List<Break> kept = new ArrayList<>(clock.breaks().stream()
+                .filter(stopset -> keeps(day, hour, stopset))
+                .toList());
+        Optional<Break> legal = clock.breaks().stream()
+                .filter(stopset -> stopset.kind() == BreakKind.LEGAL_ID)
+                .findFirst();
+        if (kept.isEmpty() || legal.isEmpty()) {
+            return List.copyOf(kept);
+        }
+        Break id = legal.get();
+        if (window.signOn().hour() == hour && !kept.contains(id)) {
+            kept.add(id.at(window.signOn().intoHour()));
+        }
+        AirTime lastId = window.signOff().minus(id.length());
+        if (lastId.hour() == hour) {
+            kept.add(id.at(lastId.intoHour()));
+        }
+        return kept.stream().distinct().sorted().toList();
     }
 }

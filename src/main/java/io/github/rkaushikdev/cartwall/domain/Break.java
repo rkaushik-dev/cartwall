@@ -64,6 +64,11 @@ public record Break(Duration position, int number, BreakKind kind, Duration leng
         return kind.sells() && paid;
     }
 
+    /** The same break moved to {@code position} in the hour. */
+    public Break at(Duration position) {
+        return new Break(position, number, kind, length, units, paid);
+    }
+
     /** Where the break ends, measured from the top of the hour. */
     public Duration ends() {
         return position.plus(length);

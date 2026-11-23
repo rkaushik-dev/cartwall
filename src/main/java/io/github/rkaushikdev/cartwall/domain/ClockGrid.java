@@ -10,6 +10,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import java.util.stream.IntStream;
 
 /**
  * One station's week, in force from a date until the next grid replaces it.
@@ -105,24 +106,22 @@ public final class ClockGrid {
      * Every break that goes out on {@code day}, by hour, in air order within the hour.
      *
      * <p>Preempted hours are left out, and so is any break the licence has the transmitter down
-     * for. An hour whose breaks are all outside the licence is left out altogether.
+     * for. An hour whose breaks are all outside the licence is left out altogether, and on a
+     * daytimer the legal ID moves to sign-on and repeats at sign-off.
      */
     public SortedMap<Integer, List<Break>> breaksOn(LocalDate day) {
         Weekday weekday = Weekday.of(day);
         SortedMap<Integer, List<Break>> found = new TreeMap<>();
-        for (int hour = 0; hour < Daypart.HOURS_IN_DAY; hour++) {
-            if (!sells(weekday, hour)) {
-                continue;
-            }
-            int at = hour;
-            List<Break> onAir = clockFor(weekday, hour).breaks().stream()
-                    .filter(stopset ->
-                            licence.map(hours -> hours.keeps(day, at, stopset)).orElse(true))
-                    .toList();
-            if (!onAir.isEmpty()) {
-                found.put(hour, onAir);
-            }
-        }
+        IntStream.range(0, Daypart.HOURS_IN_DAY)
+                .filter(hour -> sells(weekday, hour))
+                .forEach(hour -> {
+                    Clock clock = clockFor(weekday, hour);
+                    List<Break> onAir =
+                            licence.map(hours -> hours.onAir(day, hour, clock)).orElse(clock.breaks());
+                    if (!onAir.isEmpty()) {
+                        found.put(hour, onAir);
+                    }
+                });
         return Collections.unmodifiableSortedMap(found);
     }
 

@@ -92,9 +92,11 @@ class LicensedHoursTest {
         assertThat(grid.licence()).isPresent();
         var onAir = grid.breaksOn(december);
         assertThat(onAir.firstKey()).isEqualTo(7);
-        assertThat(onAir.get(7)).extracting(Break::number).containsExactly(4, 5);
+        assertThat(onAir.get(7)).extracting(Break::number).containsExactly(1, 4, 5);
+        assertThat(onAir.get(7).get(0).position()).isEqualTo(Duration.ofSeconds(30 * 60));
         assertThat(onAir.lastKey()).isEqualTo(16);
-        assertThat(onAir.get(16)).extracting(Break::number).containsExactly(1, 2, 3);
+        assertThat(onAir.get(16)).extracting(Break::number).containsExactly(1, 2, 3, 1);
+        assertThat(onAir.get(16).get(3).startsAt(16)).isEqualTo(AirTime.at(16, 29, 50));
         assertThat(onAir).doesNotContainKeys(0, 6, 17, 23);
     }
 
@@ -107,5 +109,59 @@ class LicensedHoursTest {
         grid.license(kxel());
         assertThat(grid.breaksOn(LocalDate.of(2025, 9, 5))).doesNotContainKeys(12, 13, 14, 15);
         assertThat(grid.breaksOn(LocalDate.of(2025, 9, 5))).containsKeys(11, 16);
+    }
+
+    @Test
+    void theStationIsIdentifiedAtSignOnAndAgainJustBeforeSignOff() {
+        LicensedHours hours = kxel();
+        LocalDate december = LocalDate.of(2025, 12, 1);
+        List<Break> signOn = hours.onAir(december, 7, Clock.musicClock());
+        assertThat(signOn).extracting(Break::kind).first().isSameAs(BreakKind.LEGAL_ID);
+        assertThat(signOn.get(0).startsAt(7)).isEqualTo(AirTime.at(7, 30));
+        List<Break> signOff = hours.onAir(december, 16, Clock.musicClock());
+        assertThat(signOff)
+                .filteredOn(stopset -> stopset.kind() == BreakKind.LEGAL_ID)
+                .hasSize(2);
+        assertThat(signOff.get(signOff.size() - 1).ends()).isEqualTo(Duration.ofSeconds(30 * 60));
+        assertThat(hours.onAir(december, 12, Clock.musicClock()))
+                .isEqualTo(Clock.musicClock().breaks());
+        assertThat(hours.onAir(december, 20, Clock.musicClock())).isEmpty();
+    }
+
+    @Test
+    void aSignOnAtTheTopOfTheHourKeepsTheClocksOwnId() {
+        LicensedHours hours = kxel();
+        LocalDate july = LocalDate.of(2025, 7, 14);
+        List<Break> six = hours.onAir(july, 6, Clock.musicClock());
+        assertThat(six)
+                .filteredOn(stopset -> stopset.kind() == BreakKind.LEGAL_ID)
+                .hasSize(1);
+        LicensedHours onTheHour = LicensedHours.of(
+                "7:00a-5:00p",
+                "7:00a-5:00p",
+                "7:00a-5:00p",
+                "7:00a-5:00p",
+                "7:00a-5:00p",
+                "7:00a-5:00p",
+                "7:00a-5:00p",
+                "7:00a-5:00p",
+                "7:00a-5:00p",
+                "7:00a-5:00p",
+                "7:00a-5:00p",
+                "7:00a-5:00p");
+        assertThat(onTheHour.onAir(july, 7, Clock.musicClock()))
+                .isEqualTo(Clock.musicClock().breaks());
+        List<Break> lastHour = onTheHour.onAir(july, 16, Clock.musicClock());
+        assertThat(lastHour.get(lastHour.size() - 1).startsAt(16)).isEqualTo(AirTime.at(16, 59, 50));
+        assertThat(onTheHour.onAir(july, 17, Clock.musicClock())).isEmpty();
+    }
+
+    @Test
+    void aClockWithNoLegalIdHasNothingToMove() {
+        Clock bare = Clock.build("BAR", "no id", List.of(local(2, 38, 180, 6)));
+        assertThat(kxel().onAir(LocalDate.of(2025, 12, 1), 7, bare))
+                .extracting(Break::number)
+                .containsExactly(2);
+        assertThat(local(2, 10, 180, 6).at(Duration.ofSeconds(60)).startsAt(5)).isEqualTo(AirTime.at(5, 1));
     }
 }

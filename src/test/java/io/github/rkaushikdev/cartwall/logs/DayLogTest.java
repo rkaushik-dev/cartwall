@@ -95,6 +95,29 @@ class DayLogTest {
         assertThat(log.openUnits()).isEqualTo(august.totalUnits());
         assertThat(august.inHour(6)).extracting(Avail::number).containsExactly(2, 3, 4, 5);
         assertThat(august.inHour(20)).extracting(Avail::number).containsExactly(2);
+        assertThat(log.legalIds()).last().extracting(LogLine::at).isEqualTo(AirTime.at(20, 14, 50));
+    }
+
+    @Test
+    void aDaytimerSigningOnPartWayIntoAnHourCanStillBeSigned() {
+        ClockGrid daytimer = Fixtures.aGrid("KXEL");
+        daytimer.license(LicensedHours.of(
+                "7:45a-4:45p",
+                "7:15a-5:30p",
+                "7:00a-6:15p",
+                "6:15a-7:45p",
+                "5:45a-8:15p",
+                "5:30a-8:45p",
+                "5:30a-8:45p",
+                "6:00a-8:15p",
+                "6:30a-7:30p",
+                "7:00a-6:30p",
+                "6:45a-4:45p",
+                "7:30a-4:30p"));
+        LocalDate december = LocalDate.of(2025, 12, 1);
+        DayLog log = DayLog.build(daytimer, DayBoard.build(daytimer, december));
+        assertThat(log.legalIds()).first().extracting(LogLine::at).isEqualTo(AirTime.at(7, 30));
+        assertThat(Approval.problems(log)).isEmpty();
     }
 
     @Test
