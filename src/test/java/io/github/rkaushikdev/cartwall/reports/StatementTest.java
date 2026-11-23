@@ -3,6 +3,7 @@ package io.github.rkaushikdev.cartwall.reports;
 import static io.github.rkaushikdev.cartwall.Money.ZERO;
 import static io.github.rkaushikdev.cartwall.reports.Statement.worstFirst;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 import io.github.rkaushikdev.cartwall.Money;
@@ -44,14 +45,31 @@ class StatementTest {
         assertThat(Bucket.of(60)).isSameAs(Bucket.SIXTY);
         assertThat(Bucket.of(89)).isSameAs(Bucket.SIXTY);
         assertThat(Bucket.of(90)).isSameAs(Bucket.NINETY);
-        assertThat(Bucket.of(400)).isSameAs(Bucket.NINETY);
+        assertThat(Bucket.of(119)).isSameAs(Bucket.NINETY);
+        assertThat(Bucket.of(120)).isSameAs(Bucket.OVER_120);
+        assertThat(Bucket.of(400)).isSameAs(Bucket.OVER_120);
+    }
+
+    @Test
+    void eachBucketClosesTheDayBeforeTheNextOpens() {
+        assertThat(Bucket.CURRENT.closes()).contains(29);
+        assertThat(Bucket.SIXTY.closes()).contains(89);
+        assertThat(Bucket.NINETY.closes()).contains(119);
+        assertThat(Bucket.OVER_120.closes()).isEmpty();
+    }
+
+    @Test
+    void aNegativeAgeIsNotAnAge() {
+        assertThatThrownBy(() -> Bucket.of(-1))
+                .isInstanceOf(StatementError.class)
+                .hasMessageContaining("-1 days is not an age");
     }
 
     @Test
     void theBucketsReadTheWayTheOfficeSaysThem() {
         assertThat(Bucket.values())
                 .extracting(Bucket::label)
-                .containsExactly("current", "30 days", "60 days", "90 plus");
+                .containsExactly("current", "30 days", "60 days", "90 days", "120 plus");
     }
 
     @Test
@@ -104,12 +122,13 @@ class StatementTest {
     }
 
     @Test
-    void theAgingAlwaysCarriesAllFourBuckets() {
+    void theAgingAlwaysCarriesEveryBucket() {
         Map<Bucket, Money> aging =
                 aStatement(List.of(anItem("25-1001", 5, "300.00"))).aging();
         assertThat(aging.keySet()).containsExactly(Bucket.values());
         assertThat(aging.get(Bucket.CURRENT)).isEqualTo(Money.dollars(300));
         assertThat(aging.get(Bucket.NINETY)).isEqualTo(ZERO);
+        assertThat(aging.get(Bucket.OVER_120)).isEqualTo(ZERO);
     }
 
     @Test
@@ -118,12 +137,14 @@ class StatementTest {
                         anItem("25-1001", 5, "100.00"),
                         anItem("25-1002", 35, "200.00"),
                         anItem("25-1003", 65, "400.00"),
-                        anItem("25-1004", 120, "800.00")))
+                        anItem("25-1004", 95, "800.00"),
+                        anItem("25-1005", 120, "1600.00")))
                 .aging();
         assertThat(aging.get(Bucket.CURRENT)).isEqualTo(Money.dollars(100));
         assertThat(aging.get(Bucket.THIRTY)).isEqualTo(Money.dollars(200));
         assertThat(aging.get(Bucket.SIXTY)).isEqualTo(Money.dollars(400));
         assertThat(aging.get(Bucket.NINETY)).isEqualTo(Money.dollars(800));
+        assertThat(aging.get(Bucket.OVER_120)).isEqualTo(Money.dollars(1600));
     }
 
     @Test
@@ -158,9 +179,33 @@ class StatementTest {
                 .contains("AS OF       11/03/2025")
                 .contains("25-1002")
                 .contains("TOTAL       $500.00")
-                .contains("current    $100.00")
-                .contains("90 plus    $400.00")
-                .contains("30 days    $0.00");
+                .contains("PAST DUE    $400.00")
+                .contains("current    $100.00       20.0%")
+                .contains("90 days    $400.00       80.0%")
+                .contains("30 days    $0.00          0.0%")
+                .contains("120 plus   $0.00          0.0%");
+    }
+
+    @Test
+    void theSharesOfTheAgingAddUpToTheWholeStatement() {
+        Statement statement = aStatement(List.of(
+                anItem("25-1001", 5, "100.00"), anItem("25-1002", 65, "100.00"), anItem("25-1003", 130, "200.00")));
+        assertThat(statement.share(Bucket.CURRENT)).isEqualTo(0.25);
+        assertThat(statement.share(Bucket.SIXTY)).isEqualTo(0.25);
+        assertThat(statement.share(Bucket.OVER_120)).isEqualTo(0.5);
+        assertThat(statement.share(Bucket.NINETY)).isZero();
+        double whole = 0;
+        for (Bucket bucket : Bucket.values()) {
+            whole += statement.share(bucket);
+        }
+        assertThat(whole).isEqualTo(1.0);
+    }
+
+    @Test
+    void aClearStatementHasNoShareAnywhere() {
+        Statement clear = aStatement(List.of(anItem("25-1001", 130, "300.00", "300.00")));
+        assertThat(clear.share(Bucket.OVER_120)).isZero();
+        assertThat(clear.share(Bucket.CURRENT)).isZero();
     }
 
     @Test

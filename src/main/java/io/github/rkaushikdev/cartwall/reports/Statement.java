@@ -64,7 +64,7 @@ public record Statement(String payer, LocalDate on, List<Item> items) {
                 .toList();
     }
 
-    /** The four buckets, always all four, even the empty ones, in bucket order. */
+    /** Every bucket, always all of them, even the empty ones, in bucket order. */
     public Map<Bucket, Money> aging() {
         Map<Bucket, Money> tally = new EnumMap<>(Bucket.class);
         for (Bucket bucket : Bucket.values()) {
@@ -74,6 +74,20 @@ public record Statement(String payer, LocalDate on, List<Item> items) {
             tally.merge(item.bucket(on), item.owing(), Money::plus);
         }
         return Collections.unmodifiableMap(tally);
+    }
+
+    /**
+     * What share of the open money sits in {@code bucket}, zero to one.
+     *
+     * <p>The office reads the aging as shares rather than dollars when it compares payers: two
+     * thousand dollars at ninety days is a rounding error on a large agency and the whole account
+     * of a florist. A clear statement has nothing in any bucket, so every share is zero.
+     */
+    public double share(Bucket bucket) {
+        if (isClear()) {
+            return 0.0;
+        }
+        return aging().get(bucket).cents() / (double) total().cents();
     }
 
     /** Everything thirty days old or more. */
@@ -101,8 +115,9 @@ public record Statement(String payer, LocalDate on, List<Item> items) {
         if (open.isEmpty()) {
             lines.add("  nothing outstanding");
         }
-        lines.addAll(List.of("", "TOTAL       " + total(), ""));
-        aging().forEach((bucket, money) -> lines.add("  %-10s %s".formatted(bucket.label(), money)));
+        lines.addAll(List.of("", "TOTAL       " + total(), "PAST DUE    " + pastDue(), ""));
+        aging().forEach((bucket, money) ->
+                lines.add("  %-10s %-12s %6s".formatted(bucket.label(), money, Percent.of(share(bucket)))));
         return String.join("\n", lines) + "\n";
     }
 
