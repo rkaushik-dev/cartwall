@@ -5,8 +5,8 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /** Everything production has dubbed, live and dead, by cart number. */
@@ -47,33 +47,39 @@ public final class CutLibrary {
 
     /** Cuts eligible to air on {@code day}, in cart order. */
     public List<Cut> running(LocalDate day) {
-        return running(day, Optional.empty());
+        return matching(cut -> cut.runsOn(day));
     }
 
     /** One advertiser's cuts eligible to air on {@code day}, in cart order. */
     public List<Cut> running(LocalDate day, String advertiser) {
-        return running(day, Optional.of(advertiser));
-    }
-
-    private List<Cut> running(LocalDate day, Optional<String> advertiser) {
-        return cuts.values().stream()
-                .filter(cut -> cut.runsOn(day))
-                .filter(cut -> advertiser.map(cut.advertiser()::equals).orElse(true))
-                .sorted(Comparator.comparing(Cut::cart))
-                .toList();
+        return matching(cut -> cut.runsOn(day) && cut.advertiser().equals(advertiser));
     }
 
     /** Every cut, live or dead, one advertiser has had dubbed, in cart order. */
     public List<Cut> forAdvertiser(String advertiser) {
-        return cuts.values().stream()
-                .filter(cut -> cut.advertiser().equals(advertiser))
-                .sorted(Comparator.comparing(Cut::cart))
-                .toList();
+        return matching(cut -> cut.advertiser().equals(advertiser));
+    }
+
+    /**
+     * Every cut whose code carries {@code prefix}, in cart order.
+     *
+     * <p>An agency dubbing for several clients registers one prefix, so this is how production
+     * finds everything that came in on one agency's dub list, whoever the advertiser is.
+     */
+    public List<Cut> withPrefix(String prefix) {
+        return matching(cut -> cut.code().prefix().equals(prefix));
     }
 
     /** Which sold lengths this advertiser can actually be scheduled in on {@code day}. */
     public Set<SpotLength> lengthsOnHand(String advertiser, LocalDate day) {
         return running(day, advertiser).stream().map(Cut::length).collect(Collectors.toUnmodifiableSet());
+    }
+
+    private List<Cut> matching(Predicate<Cut> test) {
+        return cuts.values().stream()
+                .filter(test)
+                .sorted(Comparator.comparing(Cut::cart))
+                .toList();
     }
 
     /** Every cut, in the order filed. */

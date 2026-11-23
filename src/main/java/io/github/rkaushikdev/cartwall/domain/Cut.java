@@ -14,7 +14,7 @@ import java.util.regex.Pattern;
  * and it is checked when the cut is filed, not when the log runs.
  *
  * @param cart the cart number the automation plays it by
- * @param isci the industry code on the copy
+ * @param isci the industry code on the copy, ISCI or Ad-ID
  * @param advertiser whose commercial it is
  * @param length the sold length it runs against
  * @param actual the running time production measured
@@ -32,7 +32,6 @@ public record Cut(
         Optional<LocalDate> lastAir,
         boolean killed) {
 
-    private static final Pattern ISCI = Pattern.compile("^[A-Z]{4}[A-Z0-9]{4,8}$");
     private static final Pattern CART = Pattern.compile("^[A-Z]\\d{3,5}$");
 
     public Cut {
@@ -40,9 +39,7 @@ public record Cut(
         if (!CART.matcher(cart).matches()) {
             throw new SpotError("'" + cart + "' is not a cart number");
         }
-        if (!ISCI.matcher(isci).matches()) {
-            throw new SpotError("'" + isci + "' is not an ISCI code");
-        }
+        CopyCode.parse(isci);
         if (advertiser == null || advertiser.isEmpty()) {
             throw new SpotError("cart " + cart + " names no advertiser");
         }
@@ -71,6 +68,11 @@ public record Cut(
             return false;
         }
         return lastAir.map(last -> !day.isAfter(last)).orElse(true);
+    }
+
+    /** The industry code, read for which system issued it. */
+    public CopyCode code() {
+        return CopyCode.parse(isci);
     }
 
     public boolean isShort() {

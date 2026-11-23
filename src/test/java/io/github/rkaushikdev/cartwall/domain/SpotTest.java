@@ -146,6 +146,56 @@ class SpotTest {
     }
 
     @Test
+    void anAdIdIsFiledAlongsideTheOldIsciCodes() {
+        Cut adId = aCut().isci("HYVE0025000").build();
+        assertThat(adId.code().kind()).isSameAs(CopyCode.Kind.AD_ID);
+        assertThat(adId.code().prefix()).isEqualTo("HYVE");
+        assertThat(aCut().build().code().kind()).isSameAs(CopyCode.Kind.ISCI);
+        assertThat(CopyCode.parse("HYVE2501")).hasToString("HYVE2501");
+        assertThat(CopyCode.parse("MOPA25F0Q7Z").kind()).isSameAs(CopyCode.Kind.AD_ID);
+    }
+
+    @Test
+    void aTelevisionVersionOfAnAdIdIsNotAudio() {
+        assertThatThrownBy(() -> aCut().isci("HYVE0025000H").build())
+                .isInstanceOf(SpotError.class)
+                .hasMessageContaining("high definition television version");
+        assertThatThrownBy(() -> CopyCode.parse("HYVE0025000D"))
+                .isInstanceOf(SpotError.class)
+                .hasMessageContaining("the 3D television version");
+        assertThatThrownBy(() -> CopyCode.parse("HYVE0025000X"))
+                .isInstanceOf(SpotError.class)
+                .hasMessageContaining("version mark Ad-ID does not issue");
+    }
+
+    @Test
+    void aCodeThatIsNeitherIsRefusedNamingBoth() {
+        for (String bad : List.of("HYVE250", "HYVE25012", "HYVE25A1", "HYVE-025000", "")) {
+            assertThatThrownBy(() -> CopyCode.parse(bad))
+                    .isInstanceOf(SpotError.class)
+                    .hasMessageContaining("is not an ISCI code or an Ad-ID");
+        }
+        assertThatThrownBy(() -> CopyCode.parse(null)).isInstanceOf(SpotError.class);
+        assertThatThrownBy(() -> new CopyCode("HYVE0025000", CopyCode.Kind.ISCI))
+                .isInstanceOf(SpotError.class)
+                .hasMessageContaining("is not an ISCI code");
+        assertThatThrownBy(() -> new CopyCode("HYVE2501", CopyCode.Kind.AD_ID))
+                .isInstanceOf(SpotError.class)
+                .hasMessageContaining("is not an Ad-ID");
+    }
+
+    @Test
+    void theLibraryFindsEverythingOnOneAgencysPrefix() {
+        CutLibrary library = new CutLibrary();
+        library.file(
+                aCut().cart("C1300").advertiser("DEALF").isci("MOPA0000101").build());
+        library.file(aCut().cart("C1204").build());
+        library.file(aCut().cart("C1250").advertiser("DEALC").isci("MOPA2502").build());
+        assertThat(library.withPrefix("MOPA")).extracting(Cut::cart).containsExactly("C1250", "C1300");
+        assertThat(library.withPrefix("ZZZZ")).isEmpty();
+    }
+
+    @Test
     void aCutHasToBelongToSomebody() {
         assertThatThrownBy(() -> aCut().advertiser("").build())
                 .isInstanceOf(SpotError.class)
