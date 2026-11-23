@@ -3,6 +3,7 @@ package io.github.rkaushikdev.cartwall.reports;
 import io.github.rkaushikdev.cartwall.Money;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.EnumMap;
@@ -41,8 +42,8 @@ public record Statement(String payer, LocalDate on, List<Item> items) {
     public static List<Statement> worstFirst(List<Statement> statements, int days) {
         return statements.stream()
                 .filter(entry -> !entry.pastDue(days).isZero())
-                .sorted(Comparator.comparingLong(
-                                (Statement entry) -> -entry.pastDue(days).cents())
+                .sorted(Comparator.comparing((Statement entry) -> entry.pastDue(days))
+                        .reversed()
                         .thenComparing(Statement::payer))
                 .toList();
     }
@@ -66,12 +67,8 @@ public record Statement(String payer, LocalDate on, List<Item> items) {
     /** Every bucket, always all of them, even the empty ones, in bucket order. */
     public Map<Bucket, Money> aging() {
         Map<Bucket, Money> tally = new EnumMap<>(Bucket.class);
-        for (Bucket bucket : Bucket.values()) {
-            tally.put(bucket, Money.ZERO);
-        }
-        for (Item item : openItems()) {
-            tally.merge(item.bucket(on), item.owing(), Money::plus);
-        }
+        Arrays.stream(Bucket.values()).forEach(bucket -> tally.put(bucket, Money.ZERO));
+        openItems().forEach(item -> tally.merge(item.bucket(on), item.owing(), Money::plus));
         return Collections.unmodifiableMap(tally);
     }
 
@@ -100,6 +97,11 @@ public record Statement(String payer, LocalDate on, List<Item> items) {
                 .filter(item -> item.age(on) >= days)
                 .map(Item::owing)
                 .toList());
+    }
+
+    /** The oldest bucket with anything in it, or nothing on a clear statement. */
+    public Optional<Bucket> oldestBucket() {
+        return oldest().map(item -> item.bucket(on));
     }
 
     public Optional<Item> oldest() {
