@@ -11,6 +11,7 @@ import io.github.rkaushikdev.cartwall.api.Requires;
 import io.github.rkaushikdev.cartwall.api.Role;
 import io.github.rkaushikdev.cartwall.api.Work;
 import io.github.rkaushikdev.cartwall.domain.ClockGrid;
+import io.github.rkaushikdev.cartwall.domain.CutLibrary;
 import io.github.rkaushikdev.cartwall.logs.Approval;
 import io.github.rkaushikdev.cartwall.logs.DayLog;
 import io.github.rkaushikdev.cartwall.logs.LogLine;
@@ -116,13 +117,14 @@ public class LogsController {
         return work.apply(uow -> {
             ClockGrid grid = Houses.gridFor(uow, station, Optional.of(day));
             DayLog built = DayLog.build(grid, logs(uow).board(grid, day));
-            List<Problem> problems = Approval.problems(built);
+            CutLibrary library = uow.accounts().library();
+            List<Problem> problems = Approval.problems(built, library);
             return new ReadyOut(
                     grid.station(),
                     day,
                     problems.isEmpty(),
                     problems.stream().map(LogsController::problemOut).toList(),
-                    Approval.warnings(built).stream()
+                    Approval.warnings(built, library).stream()
                             .map(LogsController::problemOut)
                             .toList());
         });
@@ -168,7 +170,8 @@ public class LogsController {
                         grid.station() + " " + day + " is not a draft",
                         Details.of("station", grid.station(), "day", day.toString()));
             }
-            List<Problem> found = Approval.problems(DayLog.build(grid, logs.board(grid, day)));
+            List<Problem> found = Approval.problems(
+                    DayLog.build(grid, logs.board(grid, day)), uow.accounts().library());
             if (!found.isEmpty()) {
                 throw new ConflictError(
                         grid.station() + " " + day + " has " + found.size() + " problem(s) to fix first",

@@ -2,6 +2,7 @@ package io.github.rkaushikdev.cartwall.cli;
 
 import io.github.rkaushikdev.cartwall.BroadcastWeek;
 import io.github.rkaushikdev.cartwall.domain.ClockGrid;
+import io.github.rkaushikdev.cartwall.domain.CutLibrary;
 import io.github.rkaushikdev.cartwall.logs.Approval;
 import io.github.rkaushikdev.cartwall.logs.DayLog;
 import io.github.rkaushikdev.cartwall.logs.LogStatus;
@@ -213,14 +214,16 @@ final class LogCommands {
         public Integer call() {
             ClockGrid grid;
             DayLog log;
+            CutLibrary library;
             try (UnitOfWork uow = main.work()) {
                 grid = grid(uow, station);
                 log = log(uow, grid, day);
+                library = uow.accounts().library();
             }
             PrintWriter out = main.terminal().out();
-            List<Problem> found = Approval.problems(log);
+            List<Problem> found = Approval.problems(log, library);
             found.forEach(problem -> out.println("problem  " + problem));
-            Approval.warnings(log).forEach(note -> out.println("warning  " + note));
+            Approval.warnings(log, library).forEach(note -> out.println("warning  " + note));
             if (!found.isEmpty()) {
                 main.terminal().err().println(grid.station() + " " + day + " is not ready");
                 return Main.REFUSED;
@@ -251,7 +254,8 @@ final class LogCommands {
             LogStatus status;
             try (UnitOfWork uow = main.work()) {
                 ClockGrid grid = grid(uow, station);
-                List<Problem> found = Approval.problems(log(uow, grid, day));
+                List<Problem> found =
+                        Approval.problems(log(uow, grid, day), uow.accounts().library());
                 if (!found.isEmpty()) {
                     main.terminal().err().println(grid.station() + " " + day + " has " + found.size() + " problem(s)");
                     return Main.REFUSED;
