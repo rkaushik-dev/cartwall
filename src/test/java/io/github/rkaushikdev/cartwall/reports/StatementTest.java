@@ -175,11 +175,11 @@ class StatementTest {
         String text = aStatement(List.of(anItem("25-1001", 5, "100.00"), anItem("25-1002", 95, "400.00")))
                 .render();
         assertThat(text)
-                .contains("STATEMENT   MOP")
-                .contains("AS OF       11/03/2025")
+                .contains("STATEMENT    MOP")
+                .contains("AS OF        11/03/2025")
                 .contains("25-1002")
-                .contains("TOTAL       $500.00")
-                .contains("PAST DUE    $400.00")
+                .contains("TOTAL        $500.00")
+                .contains("PAST DUE     $400.00")
                 .contains("current    $100.00       20.0%")
                 .contains("90 days    $400.00       80.0%")
                 .contains("30 days    $0.00          0.0%")
@@ -212,7 +212,7 @@ class StatementTest {
     void aClearStatementStillRenders() {
         String text =
                 aStatement(List.of(anItem("25-1001", 0, "300.00", "300.00"))).render();
-        assertThat(text).contains("nothing outstanding").contains("TOTAL       $0.00");
+        assertThat(text).contains("  nothing outstanding\n").contains("TOTAL        $0.00");
     }
 
     @Test

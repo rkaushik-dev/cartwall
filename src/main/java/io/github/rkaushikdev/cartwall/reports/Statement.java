@@ -3,7 +3,6 @@ package io.github.rkaushikdev.cartwall.reports;
 import io.github.rkaushikdev.cartwall.Money;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.EnumMap;
@@ -109,16 +108,18 @@ public record Statement(String payer, LocalDate on, List<Item> items) {
 
     /** The statement as it is posted, aging at the foot. */
     public String render() {
-        List<String> lines = new ArrayList<>(List.of("STATEMENT   " + payer, "AS OF       " + PRINTED.format(on), ""));
-        List<Item> open = openItems();
-        open.forEach(item -> lines.add("  " + item));
-        if (open.isEmpty()) {
-            lines.add("  nothing outstanding");
-        }
-        lines.addAll(List.of("", "TOTAL       " + total(), "PAST DUE    " + pastDue(), ""));
+        Form form = new Form()
+                .field("STATEMENT", payer)
+                .field("AS OF", PRINTED.format(on))
+                .blank()
+                .rows(openItems(), "nothing outstanding")
+                .blank()
+                .field("TOTAL", total())
+                .field("PAST DUE", pastDue())
+                .blank();
         aging().forEach((bucket, money) ->
-                lines.add("  %-10s %-12s %6s".formatted(bucket.label(), money, Percent.of(share(bucket)))));
-        return String.join("\n", lines) + "\n";
+                form.row("%-10s %-12s %6s".formatted(bucket.label(), money, Percent.of(share(bucket)))));
+        return form.render();
     }
 
     @Override

@@ -1,8 +1,10 @@
 package io.github.rkaushikdev.cartwall.domain;
 
+import io.github.rkaushikdev.cartwall.BroadcastMonth;
 import io.github.rkaushikdev.cartwall.BroadcastWeek;
 import io.github.rkaushikdev.cartwall.Money;
 import java.time.LocalDate;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -11,6 +13,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 
@@ -103,6 +107,25 @@ public record Order(
 
     public List<Line> linesOn(String station) {
         return lines.stream().filter(line -> line.station().equals(station)).toList();
+    }
+
+    /**
+     * What the order bills in each broadcast month it touches, in month order.
+     *
+     * <p>A broadcast month is whole weeks, so every week's value lands in exactly one month and
+     * nothing is prorated across a month end. Months where the order bills nothing are left out.
+     */
+    public SortedMap<BroadcastMonth, Money> valueByMonth() {
+        SortedMap<BroadcastMonth, Money> months = new TreeMap<>();
+        for (Line line : lines) {
+            for (BroadcastWeek week : line.flight().weeks()) {
+                Money value = line.valueIn(week);
+                if (!value.isZero()) {
+                    months.merge(BroadcastMonth.of(week.start()), value, Money::plus);
+                }
+            }
+        }
+        return Collections.unmodifiableSortedMap(months);
     }
 
     public Money valueIn(BroadcastWeek week) {

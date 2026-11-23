@@ -172,27 +172,22 @@ public final class Affidavit {
                     stray.size() + " spot(s) ran outside " + first + " to " + last,
                     Details.of("order", order, "first", stray.get(0).day().toString()));
         }
-        List<String> lines = new ArrayList<>(List.of(
-                "AFFIDAVIT OF PERFORMANCE",
-                "",
-                "ORDER        " + order,
-                "ADVERTISER   " + advertiser,
-                "PERIOD       " + Ran.SWORN_DATE.format(first) + " to " + Ran.SWORN_DATE.format(last),
-                "STATIONS     " + String.join(", ", stations()),
-                "",
-                "The spots below were broadcast at the dates and times shown.",
-                ""));
-        spots.stream().sorted(AIR_ORDER).forEach(spot -> lines.add("  " + spot));
-        lines.addAll(List.of(
-                "",
-                "TOTAL        " + count() + " spots, " + value(),
-                "",
-                "SWORN BY     " + swornBy,
-                "ON           " + Ran.SWORN_DATE.format(swornOn)));
-        if (!notary.isEmpty()) {
-            lines.add("NOTARY       " + notary);
-        }
-        return String.join("\n", lines) + "\n";
+        return new Form("AFFIDAVIT OF PERFORMANCE")
+                .field("ORDER", order)
+                .field("ADVERTISER", advertiser)
+                .field("PERIOD", Ran.SWORN_DATE.format(first) + " to " + Ran.SWORN_DATE.format(last))
+                .field("STATIONS", String.join(", ", stations()))
+                .blank()
+                .text("The spots below were broadcast at the dates and times shown.")
+                .blank()
+                .rows(spots.stream().sorted(AIR_ORDER).toList(), "")
+                .blank()
+                .field("TOTAL", count() + " spots, " + value())
+                .blank()
+                .field("SWORN BY", swornBy)
+                .field("ON", Ran.SWORN_DATE.format(swornOn))
+                .fieldIfAny("NOTARY", notary)
+                .render();
     }
 
     @Override

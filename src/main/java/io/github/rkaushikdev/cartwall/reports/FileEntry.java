@@ -132,25 +132,23 @@ public final class FileEntry {
                     Details.of("candidate", candidacy.candidate(), "missing", gaps));
         }
         Race race = candidacy.race();
-        List<String> lines = new ArrayList<>(List.of(
-                "REQUEST      " + Ran.SWORN_DATE.format(requested),
-                "CANDIDATE    " + candidacy.candidate(),
-                "OFFICE       " + race.office(),
-                "ELECTION     " + race.kind().value() + " " + Ran.SWORN_DATE.format(race.electionDay()),
-                "COMMITTEE    " + candidacy.committee(),
-                "USE          " + use.value(),
-                "DISPOSITION  " + (accepted ? "accepted" : "rejected")));
-        if (!disposition.isEmpty()) {
-            lines.add("NOTE         " + disposition);
-        }
+        Form form = new Form()
+                .field("REQUEST", Ran.SWORN_DATE.format(requested))
+                .field("CANDIDATE", candidacy.candidate())
+                .field("OFFICE", race.office())
+                .field("ELECTION", race.kind().value() + " " + Ran.SWORN_DATE.format(race.electionDay()))
+                .field("COMMITTEE", candidacy.committee())
+                .field("USE", use.value())
+                .field("DISPOSITION", accepted ? "accepted" : "rejected")
+                .fieldIfAny("NOTE", disposition);
         if (accepted) {
-            lines.add("ORDER        " + order);
-            lines.add("AUTHORISED   " + candidacy.authorisedBy());
-            bought.forEach(row -> lines.add("BOUGHT       " + row));
-            lines.add("TOTAL        " + value());
-            aired.forEach(spot -> lines.add("AIRED        " + spot));
+            form.field("ORDER", order)
+                    .field("AUTHORISED", candidacy.authorisedBy())
+                    .fields("BOUGHT", bought)
+                    .field("TOTAL", value())
+                    .fields("AIRED", aired);
         }
-        return String.join("\n", lines) + "\n";
+        return form.render();
     }
 
     @Override

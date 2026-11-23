@@ -5,7 +5,9 @@ import static io.github.rkaushikdev.cartwall.Fixtures.anOrder;
 import static io.github.rkaushikdev.cartwall.domain.SpotLength.SIXTY;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.entry;
 
+import io.github.rkaushikdev.cartwall.BroadcastMonth;
 import io.github.rkaushikdev.cartwall.BroadcastWeek;
 import io.github.rkaushikdev.cartwall.Money;
 import java.time.LocalDate;
@@ -249,5 +251,28 @@ class OrderTest {
         assertThat(revised.size()).isEqualTo(2);
         assertThat(revised.number()).isEqualTo(order.number());
         assertThat(revised.status()).isSameAs(order.status());
+    }
+
+    @Test
+    void anOrderBillsEachBroadcastMonthForTheWeeksInIt() {
+        Order order = anOrder()
+                .lines(
+                        aLine(1).build(),
+                        aLine(2).rate("40.00")
+                                .flight(LocalDate.of(2025, 8, 25), LocalDate.of(2025, 9, 26), "M-F", 5)
+                                .build())
+                .build();
+        // Broadcast August closes on 8/24, so the fourth week of line 1 bills in September.
+        assertThat(order.valueByMonth())
+                .containsExactly(
+                        entry(new BroadcastMonth(2025, 8), Money.dollars(2160)),
+                        entry(new BroadcastMonth(2025, 9), Money.dollars(720 + 5 * 5 * 40)));
+        assertThat(Money.total(List.copyOf(order.valueByMonth().values()))).isEqualTo(order.value());
+    }
+
+    @Test
+    void aBonusLineBillsNoMonth() {
+        Order order = anOrder().lines(aLine(1).rate("0.00").build()).build();
+        assertThat(order.valueByMonth()).isEmpty();
     }
 }
