@@ -114,6 +114,25 @@ class AvailsReportTest {
     }
 
     @Test
+    void aSellerQuotingFixedSeesTheHolePricedAtFixed() {
+        put(board, 7, 2, 1);
+        Map<String, AvailsRow> fixed = byLabel(byDaypart(board, book, ClassOfTime.FIXED));
+        assertThat(fixed.get("AMD").value()).isEqualTo(Money.dollars(60 * 95));
+        assertThat(fixed.get("AMD").sold()).isEqualTo(1);
+        Map<String, AvailsRow> notice = byLabel(byDaypart(board, book, ClassOfTime.NOTICE));
+        assertThat(notice.get("AMD").value()).isEqualTo(Money.dollars(48 * 95));
+    }
+
+    @Test
+    void aDaypartTheCardDoesNotSellAtTheClassHasAHoleWithNoPrice() {
+        Map<String, AvailsRow> fixed = byLabel(byDaypart(board, book, ClassOfTime.FIXED));
+        assertThat(fixed.get("EVE").units()).isPositive();
+        assertThat(fixed.get("EVE").value()).isEqualTo(Money.ZERO);
+        assertThat(fixed.get("ROS").value()).isEqualTo(Money.ZERO);
+        assertThat(byLabel(byDaypart(board, book)).get("EVE").value().isZero()).isFalse();
+    }
+
+    @Test
     void sellingAUnitTakesItsValueOutOfTheHole() {
         Money before = byLabel(byDaypart(board, book)).get("AMD").value();
         put(board, 7, 2, 1);

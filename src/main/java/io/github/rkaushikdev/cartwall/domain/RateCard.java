@@ -3,9 +3,11 @@ package io.github.rkaushikdev.cartwall.domain;
 import io.github.rkaushikdev.cartwall.Money;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -62,13 +64,31 @@ public record RateCard(String code, String station, LocalDate effective, List<Qu
         return new RateCard(code, station, effective, quotes);
     }
 
-    /** The quote for this daypart and class, or a refusal rather than a guess. */
-    public Quote quote(String daypart, ClassOfTime grade) {
+    /** The quote for this daypart and class, when the card has one. */
+    public Optional<Quote> find(String daypart, ClassOfTime grade) {
         return quotes.stream()
                 .filter(candidate -> candidate.daypart().equals(daypart) && candidate.grade() == grade)
-                .findFirst()
+                .findFirst();
+    }
+
+    /** The quote for this daypart and class, or a refusal rather than a guess. */
+    public Quote quote(String daypart, ClassOfTime grade) {
+        return find(daypart, grade)
                 .orElseThrow(
                         () -> new RateError("card " + code + " does not quote " + daypart + " at " + grade.value()));
+    }
+
+    /**
+     * The most preemptible class the card quotes a daypart at: the floor a seller can go down to.
+     *
+     * <p>It is the class, not the money, that decides. A card that prices notice under immediate in
+     * some daypart has a typing error in it, and the floor should show the error rather than hide
+     * it behind whichever number happens to be smaller.
+     */
+    public Optional<Quote> floor(String daypart) {
+        return quotes.stream()
+                .filter(candidate -> candidate.daypart().equals(daypart))
+                .min(Comparator.comparingInt(candidate -> candidate.grade().rank()));
     }
 
     public Money rate(String daypart, ClassOfTime grade, SpotLength length) {

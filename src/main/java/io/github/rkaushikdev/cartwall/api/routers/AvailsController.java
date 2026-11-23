@@ -7,8 +7,10 @@ import io.github.rkaushikdev.cartwall.api.Amounts;
 import io.github.rkaushikdev.cartwall.api.Requires;
 import io.github.rkaushikdev.cartwall.api.Role;
 import io.github.rkaushikdev.cartwall.api.Work;
+import io.github.rkaushikdev.cartwall.domain.ClassOfTime;
 import io.github.rkaushikdev.cartwall.domain.ClockGrid;
 import io.github.rkaushikdev.cartwall.domain.House;
+import io.github.rkaushikdev.cartwall.domain.RuleBook;
 import io.github.rkaushikdev.cartwall.persistence.LogRepository;
 import io.github.rkaushikdev.cartwall.reports.Avails;
 import io.github.rkaushikdev.cartwall.reports.AvailsRow;
@@ -21,7 +23,6 @@ import jakarta.validation.constraints.Min;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -72,13 +73,19 @@ public class AvailsController {
     /** What is open on one day, one row per daypart, narrowest first. */
     @GetMapping("/{station}/{day}")
     @Requires(Role.READER)
-    public DaypartsOut byDaypart(@PathVariable String station, @PathVariable LocalDate day) {
+    public DaypartsOut byDaypart(
+            @PathVariable String station,
+            @PathVariable LocalDate day,
+            @Parameter(description = "Price the holes at this class rather than the card's floor")
+                    @RequestParam(required = false)
+                    ClassOfTime grade) {
         return work.apply(uow -> {
             House house = Houses.houseFrom(uow, Optional.of(day));
             String call = house.loggingCall(station);
             DayBoard board = new LogRepository(uow.entityManager())
                     .board(house.programming().get(call), day);
-            List<AvailsRow> rows = Avails.byDaypart(board, house.book(call, day));
+            RuleBook book = house.book(call, day);
+            List<AvailsRow> rows = grade == null ? Avails.byDaypart(board, book) : Avails.byDaypart(board, book, grade);
             return new DaypartsOut(call, day, true, rows(rows));
         });
     }
@@ -115,13 +122,10 @@ public class AvailsController {
             ClockGrid grid = house.programming().get(call);
             LogRepository logs = new LogRepository(uow.entityManager());
 
-            List<DayBoard> boards = new ArrayList<>();
-            for (int offset = 0; offset < 7; offset++) {
-                LocalDate day = week.start().plusDays(offset);
-                if (logs.exists(call, day)) {
-                    boards.add(logs.board(grid, day));
-                }
-            }
+            List<DayBoard> boards = week.days().stream()
+                    .filter(day -> logs.exists(call, day))
+                    .map(day -> logs.board(grid, day))
+                    .toList();
             if (boards.isEmpty()) {
                 throw new LookupFailure(
                         call + " has no logs built for " + week, Details.of("station", call, "week", week.toString()));

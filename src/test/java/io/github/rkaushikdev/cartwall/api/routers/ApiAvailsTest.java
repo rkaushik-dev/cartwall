@@ -117,6 +117,17 @@ class ApiAvailsTest {
     }
 
     @Test
+    void theHolesCanBePricedAtTheClassTheSellerIsQuoting() {
+        traffic.post("/logs/build/2025-08-04");
+        Map<String, JsonNode> rows =
+                byLabel(reader.get("/avails/KWLO/2025-08-04", "grade", "fixed").json());
+        assertThat(rows.get("AMD").get("value").asText()).isEqualTo("5760.00");
+        assertThat(rows.get("EVE").get("value").asText()).isEqualTo("0.00");
+        assertThat(reader.get("/avails/KWLO/2025-08-04", "grade", "gold").status())
+                .isEqualTo(422);
+    }
+
+    @Test
     void theResponseSaysTheRowsOverlap() {
         traffic.post("/logs/build/2025-08-04");
         JsonNode body = reader.get("/avails/KWLO/2025-08-04").json();

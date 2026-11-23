@@ -3,7 +3,7 @@ package io.github.rkaushikdev.cartwall.reports;
 import io.github.rkaushikdev.cartwall.Money;
 import io.github.rkaushikdev.cartwall.domain.ClassOfTime;
 import io.github.rkaushikdev.cartwall.domain.Daypart;
-import io.github.rkaushikdev.cartwall.domain.RateError;
+import io.github.rkaushikdev.cartwall.domain.Quote;
 import io.github.rkaushikdev.cartwall.domain.RuleBook;
 import io.github.rkaushikdev.cartwall.domain.SpotLength;
 import io.github.rkaushikdev.cartwall.domain.Weekday;
@@ -17,6 +17,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -25,13 +26,13 @@ import java.util.Set;
  * <p>By daypart, which prices the hole as well as counting it, because forty open units in
  * overnight and four in drive are not the same inventory; by hour, which is where a schedule will
  * jam; and by day. Dayparts overlap on purpose, so the daypart rows do not add up to the day. Value
- * is at card, for a thirty, at the cheapest class the card quotes: a ceiling, not a forecast.
+ * is at card, for a thirty: a ceiling, not a forecast. Unless the seller names a class it is the
+ * card's floor, the most preemptible class quoted; named, it is that class, and a daypart the card
+ * does not sell at that class has a hole with no price on it.
  */
 public final class Avails {
 
     private static final DateTimeFormatter DAY_LABEL = DateTimeFormatter.ofPattern("EEE MM/dd", Locale.ENGLISH);
-    private static final List<ClassOfTime> CHEAPEST_FIRST =
-            List.of(ClassOfTime.IMMEDIATE, ClassOfTime.NOTICE, ClassOfTime.FIXED);
 
     private Avails() {}
 
@@ -49,6 +50,15 @@ public final class Avails {
      * counts the same unit three times.
      */
     public static List<AvailsRow> byDaypart(DayBoard board, RuleBook book) {
+        return byDaypart(board, book, Optional.empty());
+    }
+
+    /** One row per daypart, the hole priced at {@code grade} rather than at the card's floor. */
+    public static List<AvailsRow> byDaypart(DayBoard board, RuleBook book, ClassOfTime grade) {
+        return byDaypart(board, book, Optional.of(grade));
+    }
+
+    private static List<AvailsRow> byDaypart(DayBoard board, RuleBook book, Optional<ClassOfTime> grade) {
         if (!board.station().equals(book.call())) {
             throw new ReportError(book.call() + "'s card was handed " + board.station() + "'s board");
         }
@@ -69,8 +79,10 @@ public final class Avails {
             if (units == 0) {
                 continue;
             }
-            rows.add(new AvailsRow(
-                    daypart.code(), units, sold, rateFor(book, daypart.code()).times(units - sold)));
+            Optional<Quote> quoted = grade.map(named -> book.card().find(daypart.code(), named))
+                    .orElseGet(() -> book.card().floor(daypart.code()));
+            Money each = quoted.map(quote -> quote.atLength(SpotLength.THIRTY)).orElse(Money.ZERO);
+            rows.add(new AvailsRow(daypart.code(), units, sold, each.times(units - sold)));
         }
         return List.copyOf(rows);
     }
@@ -135,17 +147,5 @@ public final class Avails {
             }
         }
         return Money.total(amounts);
-    }
-
-    /** What a thirty in this daypart lists at, cheapest class the card quotes. */
-    private static Money rateFor(RuleBook book, String daypart) {
-        for (ClassOfTime grade : CHEAPEST_FIRST) {
-            try {
-                return book.rate(daypart, grade, SpotLength.THIRTY);
-            } catch (RateError notQuoted) {
-                continue;
-            }
-        }
-        return Money.ZERO;
     }
 }

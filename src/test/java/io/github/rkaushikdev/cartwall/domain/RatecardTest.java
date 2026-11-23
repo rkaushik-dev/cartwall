@@ -106,6 +106,25 @@ class RatecardTest {
     }
 
     @Test
+    void findingAQuoteTheCardDoesNotHaveIsNothingRatherThanARefusal() {
+        RateCard card = aCard();
+        assertThat(card.find("AMD", NOTICE)).map(Quote::thirty).contains(Money.dollars(48));
+        assertThat(card.find("ROS", FIXED)).isEmpty();
+        assertThat(card.find("EVE", IMMEDIATE)).isEmpty();
+    }
+
+    @Test
+    void theFloorIsTheMostPreemptibleClassQuotedWhateverItCosts() {
+        RateCard card = aCard();
+        assertThat(card.floor("AMD")).map(Quote::grade).contains(IMMEDIATE);
+        assertThat(card.floor("ROS")).map(Quote::thirty).contains(Money.dollars(12));
+        assertThat(card.floor("EVE")).isEmpty();
+        RateCard typo =
+                RateCard.build("C25T", "KWLO", JANUARY, List.of(row("AMD", NOTICE, 30), row("AMD", IMMEDIATE, 40)));
+        assertThat(typo.floor("AMD")).map(Quote::thirty).contains(Money.dollars(40));
+    }
+
+    @Test
     void aCombinationTheCardDoesNotQuoteIsAnErrorNotAGuess() {
         RateCard card = aCard();
         assertThatThrownBy(() -> card.quote("ROS", FIXED))
