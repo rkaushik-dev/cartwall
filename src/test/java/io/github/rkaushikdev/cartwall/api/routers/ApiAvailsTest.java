@@ -208,6 +208,20 @@ class ApiAvailsTest {
     }
 
     @Test
+    void aWeekCanBeReadByDaypartWithTheFullestNamed() {
+        anOrder();
+        JsonNode body = reader.get("/avails/KWLO/week/2025-08-06/dayparts").json();
+        assertThat(body.get("week").asText()).isEqualTo("week of 2025-08-04");
+        assertThat(body.get("overlapping").asBoolean()).isTrue();
+        assertThat(body.get("tightest").asText()).isEqualTo("AMD");
+        Map<String, JsonNode> rows = byLabel(body);
+        assertThat(rows.get("AMD").get("units").asInt()).isEqualTo(5 * 96);
+        assertThat(rows.get("AMD").get("sold").asInt()).isEqualTo(10);
+        assertThat(rows.get("ROS").get("units").asInt()).isEqualTo(7 * 24 * 24);
+        assertThat(reader.get("/avails/KWLO/week/2025-09-01/dayparts").status()).isEqualTo(404);
+    }
+
+    @Test
     void aWeekWithNoLogsBuiltIsA404() {
         Http.Answer response = reader.get("/avails/KWLO/week/2025-09-01");
         assertThat(response.status()).isEqualTo(404);

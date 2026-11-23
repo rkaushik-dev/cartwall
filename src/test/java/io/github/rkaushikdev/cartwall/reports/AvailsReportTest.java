@@ -233,6 +233,57 @@ class AvailsReportTest {
         assertThat(weekValue(boards, books, "AMD")).isEqualTo(Money.dollars(36 * (5 * 96 - 6)));
     }
 
+    private List<DayBoard> aWeekOfBoards() {
+        ClockGrid grid = house.programming().get("KWLO");
+        return IntStream.range(0, 7)
+                .mapToObj(MONDAY::plusDays)
+                .map(day -> DayBoard.build(grid, day))
+                .toList();
+    }
+
+    private Map<LocalDate, RuleBook> booksFor(List<DayBoard> boards) {
+        return boards.stream().collect(Collectors.toMap(DayBoard::day, board -> house.book("KWLO", board.day())));
+    }
+
+    @Test
+    void aWeekByDaypartAddsEachDaypartOverTheDaysThatCarryIt() {
+        List<DayBoard> boards = aWeekOfBoards();
+        put(boards.get(1), 7, 2, 4);
+        put(boards.get(5), 12, 2, 3);
+        Map<String, AvailsRow> week = byLabel(Avails.weekByDaypart(boards, booksFor(boards)));
+        assertThat(week.get("AMD").units()).isEqualTo(5 * 96);
+        assertThat(week.get("AMD").sold()).isEqualTo(4);
+        assertThat(week.get("AMD").value()).isEqualTo(Money.dollars(36 * (5 * 96 - 4)));
+        assertThat(week.get("SAT").units()).isEqualTo(18 * 24);
+        assertThat(week.get("SAT").sold()).isEqualTo(3);
+        assertThat(week.get("ROS").units()).isEqualTo(7 * 24 * 24);
+        assertThat(week.get("ROS").sold()).isEqualTo(7);
+    }
+
+    @Test
+    void theWeekKeepsTheDailyOrderWhateverOrderTheBoardsCameIn() {
+        List<DayBoard> boards = aWeekOfBoards();
+        List<DayBoard> shuffled = List.of(boards.get(6), boards.get(2), boards.get(0));
+        List<String> labels = Avails.weekByDaypart(shuffled, booksFor(shuffled)).stream()
+                .map(AvailsRow::label)
+                .toList();
+        assertThat(labels.indexOf("AMD")).isLessThan(labels.indexOf("AAA"));
+        assertThat(labels).last().isEqualTo("ROS");
+        assertThat(labels).contains("SUN", "MID");
+    }
+
+    @Test
+    void theTightestDaypartIsTheFullestByShareNotByCount() {
+        List<DayBoard> boards = aWeekOfBoards();
+        put(boards.get(5), 12, 2, 6);
+        put(boards.get(0), 7, 2, 6);
+        put(boards.get(0), 8, 2, 6);
+        List<AvailsRow> week = Avails.weekByDaypart(boards, booksFor(boards));
+        assertThat(Avails.tightest(week)).map(AvailsRow::label).contains("AMD");
+        assertThat(Avails.tightest(List.of(new AvailsRow("ZZZ", 0, 0)))).isEmpty();
+        assertThat(weekValue(boards, booksFor(boards), "NOPE")).isEqualTo(Money.ZERO);
+    }
+
     @Test
     void aWeekValueWithADayNobodyGaveRulesFor() {
         List<DayBoard> boards = List.of(DayBoard.build(house.programming().get("KWLO"), MONDAY));

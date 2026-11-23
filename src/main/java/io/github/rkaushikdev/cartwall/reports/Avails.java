@@ -13,7 +13,9 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -63,11 +65,8 @@ public final class Avails {
             throw new ReportError(book.call() + "'s card was handed " + board.station() + "'s board");
         }
         Weekday weekday = Weekday.of(board.day());
-        List<Daypart> narrowestFirst = book.dayparts().dayparts().stream()
-                .sorted(Comparator.comparingInt(part -> part.cells().size()))
-                .toList();
         List<AvailsRow> rows = new ArrayList<>();
-        for (Daypart daypart : narrowestFirst) {
+        for (Daypart daypart : narrowestFirst(book)) {
             int units = 0;
             int sold = 0;
             for (Avail avail : board.avails()) {
@@ -132,20 +131,60 @@ public final class Avails {
         return boards.stream().mapToInt(DayBoard::freeUnits).sum();
     }
 
-    /** What the open units in one daypart would fetch at card across a week. */
-    public static Money weekValue(List<DayBoard> boards, Map<LocalDate, RuleBook> books, String daypart) {
-        List<Money> amounts = new ArrayList<>();
-        for (DayBoard board : boards) {
+    /**
+     * A week by daypart: each daypart's units, sold units and open value added up over the days.
+     *
+     * <p>This is the sales manager's Monday sheet. A daypart only some of the days carry, such as
+     * Saturday, is added over the days that carry it. The rows come narrowest first, overlapping
+     * as every daypart report does.
+     */
+    public static List<AvailsRow> weekByDaypart(List<DayBoard> boards, Map<LocalDate, RuleBook> books) {
+        Map<String, AvailsRow> totals = new LinkedHashMap<>();
+        for (DayBoard board :
+                boards.stream().sorted(Comparator.comparing(DayBoard::day)).toList()) {
             RuleBook book = books.get(board.day());
             if (book == null) {
                 throw new ReportError("no rules were given for " + board.day());
             }
             for (AvailsRow row : byDaypart(board, book)) {
-                if (row.label().equals(daypart)) {
-                    amounts.add(row.value());
-                }
+                totals.merge(
+                        row.label(),
+                        row,
+                        (was, more) -> new AvailsRow(
+                                was.label(),
+                                was.units() + more.units(),
+                                was.sold() + more.sold(),
+                                was.value().plus(more.value())));
             }
         }
-        return Money.total(amounts);
+        Map<String, Integer> width = new HashMap<>();
+        books.values().forEach(book -> narrowestFirst(book)
+                .forEach(daypart ->
+                        width.putIfAbsent(daypart.code(), daypart.cells().size())));
+        return totals.values().stream()
+                .sorted(Comparator.comparingInt((AvailsRow row) -> width.get(row.label())))
+                .toList();
+    }
+
+    private static List<Daypart> narrowestFirst(RuleBook book) {
+        return book.dayparts().dayparts().stream()
+                .sorted(Comparator.comparingInt(part -> part.cells().size()))
+                .toList();
+    }
+
+    /** What the open units in one daypart would fetch at card across a week. */
+    public static Money weekValue(List<DayBoard> boards, Map<LocalDate, RuleBook> books, String daypart) {
+        return weekByDaypart(boards, books).stream()
+                .filter(row -> row.label().equals(daypart))
+                .map(AvailsRow::value)
+                .findFirst()
+                .orElse(Money.ZERO);
+    }
+
+    /** The daypart in a week report that is fullest, by sellout; dayparts with no units are left out. */
+    public static Optional<AvailsRow> tightest(List<AvailsRow> rows) {
+        return rows.stream()
+                .filter(row -> row.units() > 0)
+                .max(Comparator.comparingDouble(AvailsRow::sellout).thenComparing(AvailsRow::label));
     }
 }

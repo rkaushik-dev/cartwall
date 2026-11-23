@@ -12,6 +12,7 @@ import io.github.rkaushikdev.cartwall.domain.ClockGrid;
 import io.github.rkaushikdev.cartwall.domain.House;
 import io.github.rkaushikdev.cartwall.domain.RuleBook;
 import io.github.rkaushikdev.cartwall.persistence.LogRepository;
+import io.github.rkaushikdev.cartwall.persistence.UnitOfWork;
 import io.github.rkaushikdev.cartwall.reports.Avails;
 import io.github.rkaushikdev.cartwall.reports.AvailsRow;
 import io.github.rkaushikdev.cartwall.scheduling.DayBoard;
@@ -23,7 +24,9 @@ import jakarta.validation.constraints.Min;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -57,6 +60,10 @@ public class AvailsController {
 
     /** A day hour by hour. */
     public record HoursOut(String station, LocalDate day, List<RowOut> rows) {}
+
+    /** A broadcast week by daypart, and which daypart is fullest. The rows overlap. */
+    public record WeekDaypartsOut(
+            String station, String week, boolean overlapping, String tightest, List<RowOut> rows) {}
 
     /** A broadcast week, one row a day. */
     public record WeekOut(
@@ -119,18 +126,7 @@ public class AvailsController {
             BroadcastWeek week = BroadcastWeek.of(weekOf);
             House house = Houses.houseFrom(uow, Optional.of(week.start()));
             String call = house.loggingCall(station);
-            ClockGrid grid = house.programming().get(call);
-            LogRepository logs = new LogRepository(uow.entityManager());
-
-            List<DayBoard> boards = week.days().stream()
-                    .filter(day -> logs.exists(call, day))
-                    .map(day -> logs.board(grid, day))
-                    .toList();
-            if (boards.isEmpty()) {
-                throw new LookupFailure(
-                        call + " has no logs built for " + week, Details.of("station", call, "week", week.toString()));
-            }
-            List<AvailsRow> rows = Avails.byDay(boards);
+            List<AvailsRow> rows = Avails.byDay(weekBoards(uow, house, call, week));
             int units = rows.stream().mapToInt(AvailsRow::units).sum();
             int sold = rows.stream().mapToInt(AvailsRow::sold).sum();
             return new WeekOut(
@@ -144,6 +140,42 @@ public class AvailsController {
                     units == 0 ? 0.0 : rounded((double) sold / units),
                     rows(rows));
         });
+    }
+
+    /** The broadcast week {@code weekOf} falls in, one row per daypart added over its days. */
+    @GetMapping("/{station}/week/{weekOf}/dayparts")
+    @Requires(Role.READER)
+    public WeekDaypartsOut byWeekDaypart(@PathVariable String station, @PathVariable LocalDate weekOf) {
+        return work.apply(uow -> {
+            BroadcastWeek week = BroadcastWeek.of(weekOf);
+            House house = Houses.houseFrom(uow, Optional.of(week.start()));
+            String call = house.loggingCall(station);
+            List<DayBoard> boards = weekBoards(uow, house, call, week);
+            Map<LocalDate, RuleBook> books = new HashMap<>();
+            boards.forEach(board -> books.put(board.day(), house.book(call, board.day())));
+            List<AvailsRow> rows = Avails.weekByDaypart(boards, books);
+            return new WeekDaypartsOut(
+                    call,
+                    week.toString(),
+                    true,
+                    Avails.tightest(rows).map(AvailsRow::label).orElse(""),
+                    rows(rows));
+        });
+    }
+
+    /** Every day of the week that has a log built, refusing a week with none. */
+    private static List<DayBoard> weekBoards(UnitOfWork uow, House house, String call, BroadcastWeek week) {
+        ClockGrid grid = house.programming().get(call);
+        LogRepository logs = new LogRepository(uow.entityManager());
+        List<DayBoard> boards = week.days().stream()
+                .filter(day -> logs.exists(call, day))
+                .map(day -> logs.board(grid, day))
+                .toList();
+        if (boards.isEmpty()) {
+            throw new LookupFailure(
+                    call + " has no logs built for " + week, Details.of("station", call, "week", week.toString()));
+        }
+        return boards;
     }
 
     private static List<RowOut> rows(List<AvailsRow> rows) {
