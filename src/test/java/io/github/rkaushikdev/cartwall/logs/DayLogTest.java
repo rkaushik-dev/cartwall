@@ -12,7 +12,9 @@ import io.github.rkaushikdev.cartwall.Duration;
 import io.github.rkaushikdev.cartwall.Fixtures;
 import io.github.rkaushikdev.cartwall.domain.ClassOfTime;
 import io.github.rkaushikdev.cartwall.domain.ClockGrid;
+import io.github.rkaushikdev.cartwall.domain.LicensedHours;
 import io.github.rkaushikdev.cartwall.domain.SpotLength;
+import io.github.rkaushikdev.cartwall.scheduling.Avail;
 import io.github.rkaushikdev.cartwall.scheduling.DayBoard;
 import io.github.rkaushikdev.cartwall.scheduling.Placement;
 import java.time.LocalDate;
@@ -63,6 +65,36 @@ class DayLogTest {
         assertThat(log.openUnits()).isEqualTo(24 * 24);
         assertThat(log.soldUnits()).isZero();
         assertThat(log.commercialLength()).isEqualTo(new Duration(0));
+    }
+
+    @Test
+    void aDaytimersLogStopsAtSignOffAndHasNoHolesAfterIt() {
+        ClockGrid daytimer = Fixtures.aGrid("KXEL");
+        daytimer.license(LicensedHours.of(
+                "7:45a-4:45p",
+                "7:15a-5:30p",
+                "7:00a-6:15p",
+                "6:15a-7:45p",
+                "5:45a-8:15p",
+                "5:30a-8:45p",
+                "5:30a-8:45p",
+                "6:00a-8:15p",
+                "6:30a-7:30p",
+                "7:00a-6:30p",
+                "6:45a-4:45p",
+                "7:30a-4:30p"));
+        DayBoard august = DayBoard.build(daytimer, MONDAY);
+        DayLog log = DayLog.build(daytimer, august);
+        assertThat(log.hours()).first().isEqualTo(6);
+        assertThat(log.hours()).last().isEqualTo(20);
+        assertThat(log.legalIds())
+                .extracting(LogLine::hour)
+                .doesNotContain(5, 21)
+                .contains(6, 20);
+        assertThat(log.inHour(20)).extracting(LogLine::breakNumber).containsOnly(1, 2);
+        assertThat(log.openUnits()).isEqualTo(august.totalUnits());
+        assertThat(august.inHour(6)).extracting(Avail::number).containsExactly(2, 3, 4, 5);
+        assertThat(august.inHour(20)).extracting(Avail::number).containsExactly(2);
     }
 
     @Test

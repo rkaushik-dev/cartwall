@@ -59,6 +59,11 @@ public record Break(Duration position, int number, BreakKind kind, Duration leng
         return new Break(Duration.ofSeconds(minute * 60), number, BreakKind.LOCAL, Duration.ofSeconds(seconds), units);
     }
 
+    /** Whether a paid spot may go in: a kind traffic sells, and not held back for house and trade. */
+    public boolean isSellable() {
+        return kind.sells() && paid;
+    }
+
     /** Where the break ends, measured from the top of the hour. */
     public Duration ends() {
         return position.plus(length);

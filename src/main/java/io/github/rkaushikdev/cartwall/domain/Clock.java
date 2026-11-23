@@ -104,9 +104,7 @@ public record Clock(String code, String name, List<Break> breaks) implements Ite
 
     /** The breaks a paid spot may go in. */
     public List<Break> sellable() {
-        return breaks.stream()
-                .filter(stopset -> stopset.kind().sells() && stopset.paid())
-                .toList();
+        return breaks.stream().filter(Break::isSellable).toList();
     }
 
     public Duration commercialLength() {

@@ -1,11 +1,8 @@
 package io.github.rkaushikdev.cartwall.scheduling;
 
 import io.github.rkaushikdev.cartwall.domain.Break;
-import io.github.rkaushikdev.cartwall.domain.Clock;
 import io.github.rkaushikdev.cartwall.domain.ClockGrid;
-import io.github.rkaushikdev.cartwall.domain.ProgrammingError;
 import io.github.rkaushikdev.cartwall.domain.SpotLength;
-import io.github.rkaushikdev.cartwall.domain.Weekday;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -35,21 +32,12 @@ public final class DayBoard {
         this.day = day;
     }
 
-    /** Lay out a date from the grid, skipping preempted hours. */
+    /** Lay out a date from the grid, skipping preempted hours and anything the licence has off the air. */
     public static DayBoard build(ClockGrid grid, LocalDate day) {
         DayBoard board = new DayBoard(grid.station(), day);
-        Weekday weekday = Weekday.of(day);
-        for (int hour = 0; hour < 24; hour++) {
-            Clock clock;
-            try {
-                clock = grid.clockFor(weekday, hour);
-            } catch (ProgrammingError noLocalAir) {
-                continue;
-            }
-            for (Break stopset : clock.sellable()) {
-                board.avails.add(Avail.of(grid.station(), day, hour, stopset));
-            }
-        }
+        grid.breaksOn(day).forEach((hour, breaks) -> breaks.stream()
+                .filter(Break::isSellable)
+                .forEach(stopset -> board.avails.add(Avail.of(grid.station(), day, hour, stopset))));
         return board;
     }
 

@@ -6,6 +6,9 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.SortedMap;
+import java.util.TreeMap;
 
 /**
  * One station's week, in force from a date until the next grid replaces it.
@@ -14,6 +17,10 @@ import java.util.Map;
  * decisions arrive: a general rule laid down once and exceptions laid on top of it. The last one
  * filed that covers an hour wins, so the order of the stack is load bearing, and a grid read out of
  * order will schedule spots into a ballgame.
+ *
+ * <p>A daytimer's grid also carries its licensed hours. Programming draws the clocks for the whole
+ * day because the music log does not change with the season, and the licence then decides which
+ * of those breaks the transmitter is actually up for on a given date.
  */
 public final class ClockGrid {
 
@@ -21,6 +28,7 @@ public final class ClockGrid {
     private final LocalDate effective;
     private final List<Assignment> assignments = new ArrayList<>();
     private final Map<String, Clock> clocks = new LinkedHashMap<>();
+    private Optional<LicensedHours> licence = Optional.empty();
 
     public ClockGrid(String station, LocalDate effective) {
         this.station = station;
@@ -43,6 +51,16 @@ public final class ClockGrid {
     /** The clocks filed for this station, by code, in filing order. */
     public Map<String, Clock> clocks() {
         return Collections.unmodifiableMap(clocks);
+    }
+
+    /** The daytimer licence the grid is held to, when the station has one. */
+    public Optional<LicensedHours> licence() {
+        return licence;
+    }
+
+    /** Hold the grid to a daytimer's licensed hours. */
+    public void license(LicensedHours hours) {
+        this.licence = Optional.of(hours);
     }
 
     public void fileClock(Clock clock) {
@@ -83,6 +101,31 @@ public final class ClockGrid {
                             + " for " + slot.assignment().label());
         }
         return clocks.get(slot.clock());
+    }
+
+    /**
+     * Every break that goes out on {@code day}, by hour, in air order within the hour.
+     *
+     * <p>Preempted hours are left out, and so is any break the licence has the transmitter down
+     * for. An hour whose breaks are all outside the licence is left out altogether.
+     */
+    public SortedMap<Integer, List<Break>> breaksOn(LocalDate day) {
+        Weekday weekday = Weekday.of(day);
+        SortedMap<Integer, List<Break>> found = new TreeMap<>();
+        for (int hour = 0; hour < Daypart.HOURS_IN_DAY; hour++) {
+            if (!sells(weekday, hour)) {
+                continue;
+            }
+            int at = hour;
+            List<Break> onAir = clockFor(weekday, hour).breaks().stream()
+                    .filter(stopset ->
+                            licence.map(hours -> hours.keeps(day, at, stopset)).orElse(true))
+                    .toList();
+            if (!onAir.isEmpty()) {
+                found.put(hour, onAir);
+            }
+        }
+        return Collections.unmodifiableSortedMap(found);
     }
 
     public boolean sells(Weekday day, int hour) {

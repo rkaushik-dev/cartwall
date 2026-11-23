@@ -4,11 +4,8 @@ import io.github.rkaushikdev.cartwall.AirTime;
 import io.github.rkaushikdev.cartwall.Duration;
 import io.github.rkaushikdev.cartwall.domain.Break;
 import io.github.rkaushikdev.cartwall.domain.BreakKind;
-import io.github.rkaushikdev.cartwall.domain.Clock;
 import io.github.rkaushikdev.cartwall.domain.ClockGrid;
-import io.github.rkaushikdev.cartwall.domain.ProgrammingError;
 import io.github.rkaushikdev.cartwall.domain.SpotLength;
-import io.github.rkaushikdev.cartwall.domain.Weekday;
 import io.github.rkaushikdev.cartwall.scheduling.Avail;
 import io.github.rkaushikdev.cartwall.scheduling.DayBoard;
 import io.github.rkaushikdev.cartwall.scheduling.Placement;
@@ -48,18 +45,8 @@ public record DayLog(String station, LocalDate day, List<LogLine> lines) impleme
             throw new LogError(grid.station() + "'s grid was handed " + board.station() + "'s board");
         }
         List<LogLine> lines = new ArrayList<>();
-        Weekday weekday = Weekday.of(board.day());
-        for (int hour = 0; hour < 24; hour++) {
-            Clock clock;
-            try {
-                clock = grid.clockFor(weekday, hour);
-            } catch (ProgrammingError noLocalAir) {
-                continue;
-            }
-            for (Break stopset : clock.breaks()) {
-                lines.addAll(breakLines(board, hour, stopset));
-            }
-        }
+        grid.breaksOn(board.day())
+                .forEach((hour, breaks) -> breaks.forEach(stopset -> lines.addAll(breakLines(board, hour, stopset))));
         lines.sort(AIR_ORDER);
         return new DayLog(board.station(), board.day(), lines);
     }
@@ -139,7 +126,7 @@ public record DayLog(String station, LocalDate day, List<LogLine> lines) impleme
     /** Every element inside one break, in air order, holes included. */
     private static List<LogLine> breakLines(DayBoard board, int hour, Break stopset) {
         AirTime starts = AirTime.at(hour).plus(stopset.position());
-        if (!(stopset.kind().sells() && stopset.paid())) {
+        if (!stopset.isSellable()) {
             return List.of(new LogLine(starts, stopset.number(), elementFor(stopset.kind()), stopset.length()));
         }
         Avail avail = board.avail(hour, stopset.number());
