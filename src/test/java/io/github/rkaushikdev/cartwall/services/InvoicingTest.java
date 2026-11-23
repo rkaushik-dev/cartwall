@@ -300,6 +300,48 @@ class InvoicingTest {
         }
     }
 
+    /** A day built and saved but not yet aired, so its as-run is still to come. */
+    private static void anUnpostedDay(UnitOfWork uow, ClockGrid grid, LocalDate day, Spot spot) {
+        DayBoard board = DayBoard.build(grid, day);
+        board.avail(spot.hour(), spot.number())
+                .add(new Placement(spot.order(), spot.line(), "HYVEE", THIRTY, FIXED, spot.cart()));
+        new LogRepository(uow.entityManager()).save(board);
+    }
+
+    @Test
+    void anOrderStillWaitingOnAnAsRunIsLeftForTheNextRun() {
+        ClockGrid grid = aGrid("KWLO");
+        RunReport report;
+        try (UnitOfWork uow = engine.unitOfWork()) {
+            uow.orders().save(anOrder());
+            aDay(uow, grid, MONDAY, List.of(aSpot(7, "25-1044", 1, "C1204")), List.of(ran("2025-08-04", "07:10:00")));
+            anUnpostedDay(uow, grid, MONDAY.plusDays(2), aSpot(7, "25-1044", 1, "C1204"));
+            anUnpostedDay(uow, grid, MONDAY.plusDays(1), aSpot(9, "25-1044", 1, "C1204"));
+            assertThat(Invoicing.waitingOn(uow, "25-1044", AUGUST))
+                    .containsExactly("KWLO 2025-08-05", "KWLO 2025-08-06");
+            report = runMonth(uow, AUGUST, RAISED);
+        }
+        assertThat(report.count()).isZero();
+        assertThat(report.skipped())
+                .containsExactly(new Skipped("25-1044", "waiting on the as-run for KWLO 2025-08-05, KWLO 2025-08-06"));
+    }
+
+    @Test
+    void raisingOneOrderStillWaitingOnAnAsRunIsRefused() {
+        ClockGrid grid = aGrid("KWLO");
+        try (UnitOfWork uow = engine.unitOfWork()) {
+            uow.orders().save(anOrder());
+            aDay(uow, grid, MONDAY, List.of(aSpot(7, "25-1044", 1, "C1204")), List.of(ran("2025-08-04", "07:10:00")));
+            anUnpostedDay(uow, grid, MONDAY.plusDays(1), aSpot(9, "25-1044", 1, "C1204"));
+            InvoicingError caught =
+                    catchThrowableOfType(InvoicingError.class, () -> raiseOne(uow, "25-1044", AUGUST, RAISED));
+            assertThat(caught).hasMessage("25-1044 is waiting on the as-run for KWLO 2025-08-05");
+            assertThat(caught.context()).containsEntry("month", "2025-08");
+            assertThat(Invoicing.waitingOn(uow, "25-1044", new BroadcastMonth(2025, 9)))
+                    .isEmpty();
+        }
+    }
+
     @Test
     void raisingAnOrderThatAiredNothingIsRefused() {
         try (UnitOfWork uow = engine.unitOfWork()) {

@@ -33,6 +33,8 @@ import java.util.Optional;
  * <p>Only aired spots are billed: the run reads the posted as-run, not the log, so a day nobody has
  * reconciled contributes nothing. One invoice per order per month, once: a second run skips what
  * was invoiced and reports it, and never rewrites it (a correction is a credit and a re-raise).
+ * Because it is once, an order is not invoiced while any day it ran on in the month is still
+ * waiting for its as-run: billing it early would leave that day's spots unbillable for good.
  * The number comes off the counter in the same transaction, so a run that fails halfway leaves no
  * hole. An order that aired nothing gets no invoice rather than a zero one.
  */
@@ -40,6 +42,8 @@ public final class Invoicing {
 
     /** The series invoice numbers are drawn from. */
     public static final String SERIES = "INV";
+
+    private static final String ALREADY_INVOICED = "already invoiced";
 
     private static final String AIRED_IN_MONTH = " from SpotRow s join s.log l where s.aired = true"
             + " and l.state = :aired and l.day >= :first and l.day <= :last";
@@ -177,19 +181,40 @@ public final class Invoicing {
         return row;
     }
 
-    /** Number and store the invoice for one order. Refuses a second one. */
+    /**
+     * Every station day in the month that carries one of the order's spots and has not been
+     * posted as aired yet, written {@code KWLO 2025-08-12}, in day order.
+     */
+    public static List<String> waitingOn(UnitOfWork uow, String order, BroadcastMonth month) {
+        return uow
+                .entityManager()
+                .createQuery(
+                        "select distinct l.day, l.station from SpotRow s join s.log l where s.orderNumber = :order"
+                                + " and l.state <> :aired and l.day >= :first and l.day <= :last order by l.day, l.station",
+                        Object[].class)
+                .setParameter("order", order)
+                .setParameter("aired", LogState.AIRED)
+                .setParameter("first", month.start())
+                .setParameter("last", month.end())
+                .getResultList()
+                .stream()
+                .map(row -> row[1] + " " + row[0])
+                .toList();
+    }
+
+    /** Number and store the invoice for one order. Refuses a second one, or one still waiting on an as-run. */
     public static InvoiceRow raiseOne(UnitOfWork uow, String order, BroadcastMonth month, LocalDate raisedOn) {
-        if (existing(uow, order, month).isPresent()) {
-            throw new AlreadyInvoiced(
-                    order + " already has an invoice for " + month,
-                    Details.of("order", order, "month", month.toString()));
-        }
+        Map<String, Object> where = Details.of("order", order, "month", month.toString());
+        holdUp(uow, order, month).ifPresent(why -> {
+            throw why.equals(ALREADY_INVOICED)
+                    ? new AlreadyInvoiced(order + " already has an invoice for " + month, where)
+                    : new InvoicingError(order + " is " + why, where);
+        });
         Invoice invoice = buildInvoice(uow, order, month, raisedOn);
         if (invoice.isEmpty()) {
-            throw new InvoicingError(
-                    order + " aired nothing in " + month, Details.of("order", order, "month", month.toString()));
+            throw new InvoicingError(order + " aired nothing in " + month, where);
         }
-        return store(uow, invoice.withNumber(new Numbering(uow.entityManager()).next(SERIES, raisedOn.getYear())));
+        return numberAndStore(uow, invoice, raisedOn);
     }
 
     /** Raise every invoice the month has earned. */
@@ -197,13 +222,14 @@ public final class Invoicing {
         RunReport report = new RunReport(month);
         HouseLog.event("invoice.run.started", field("month", month.toString()), field("raised", raisedOn.toString()));
         for (String order : ordersWithAir(uow, month)) {
-            if (existing(uow, order, month).isPresent()) {
-                report.skipped.add(new Skipped(order, "already invoiced"));
+            Optional<String> held = holdUp(uow, order, month);
+            if (held.isPresent()) {
+                report.skipped.add(new Skipped(order, held.get()));
                 HouseLog.warn(
                         "invoice.skipped",
                         field("order", order),
                         field("month", month.toString()),
-                        field("why", "already invoiced"));
+                        field("why", held.get()));
                 continue;
             }
             Invoice invoice = buildInvoice(uow, order, month, raisedOn);
@@ -211,12 +237,11 @@ public final class Invoicing {
                 report.nothingAired.add(order);
                 continue;
             }
-            invoice = invoice.withNumber(new Numbering(uow.entityManager()).next(SERIES, raisedOn.getYear()));
-            store(uow, invoice);
-            report.raised.add(invoice.number());
+            InvoiceRow stored = numberAndStore(uow, invoice, raisedOn);
+            report.raised.add(stored.getNumber());
             HouseLog.event(
                     "invoice.raised",
-                    field("invoice", invoice.number()),
+                    field("invoice", stored.getNumber()),
                     field("order", order),
                     field("payer", invoice.payer()),
                     field("spots", invoice.spots()),
@@ -229,6 +254,22 @@ public final class Invoicing {
                 field("raised", report.count()),
                 field("skipped", report.skipped.size()));
         return report;
+    }
+
+    /** Why the order cannot be invoiced for the month yet, or nothing when it can. */
+    private static Optional<String> holdUp(UnitOfWork uow, String order, BroadcastMonth month) {
+        if (existing(uow, order, month).isPresent()) {
+            return Optional.of(ALREADY_INVOICED);
+        }
+        List<String> waiting = waitingOn(uow, order, month);
+        if (!waiting.isEmpty()) {
+            return Optional.of("waiting on the as-run for " + String.join(", ", waiting));
+        }
+        return Optional.empty();
+    }
+
+    private static InvoiceRow numberAndStore(UnitOfWork uow, Invoice invoice, LocalDate raisedOn) {
+        return store(uow, invoice.withNumber(new Numbering(uow.entityManager()).next(SERIES, raisedOn.getYear())));
     }
 
     /** An order the run passed over, and why. */
