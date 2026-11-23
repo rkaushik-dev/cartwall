@@ -84,10 +84,40 @@ class PoliticalFileTest {
                 .hasMessageContaining("missing the authorised by disclaimer");
     }
 
+    static FileEntry anIssueBuy(List<String> officers) {
+        return new FileEntry(
+                ASKED, aCandidacy("R. Merrick", ""), Use.ISSUE, true, "25-1044", "", List.of(aBought()), officers);
+    }
+
     @Test
     void anIssueEntryDoesNotNeedTheCandidateDisclaimer() {
-        FileEntry entry = accepted(aCandidacy("R. Merrick", ""), Use.ISSUE, "25-1044", List.of(aBought()), ASKED);
+        FileEntry entry = anIssueBuy(List.of("D. Kemp, chair", "L. Ortiz, treasurer"));
+        assertThat(entry.missing()).isEmpty();
         assertThat(entry.isComplete()).isTrue();
+        assertThat(entry.officers()).containsExactly("D. Kemp, chair", "L. Ortiz, treasurer");
+    }
+
+    @Test
+    void anIssueEntryHasToSayWhoRunsTheSponsor() {
+        FileEntry entry = anIssueBuy(List.of());
+        assertThat(entry.missing()).containsExactly("the sponsor's officers or directors");
+        assertThat(accepted(aCandidacy("R. Merrick", ""), Use.ISSUE, "25-1044", List.of(aBought()), ASKED)
+                        .missing())
+                .containsExactly("the sponsor's officers or directors");
+        assertThat(anIssueBuy(List.of("D. Kemp, chair", "L. Ortiz, treasurer")).render())
+                .contains("USE          issue\nOFFICERS     D. Kemp, chair, L. Ortiz, treasurer\n");
+        assertThat(accepted().render()).doesNotContain("OFFICERS");
+    }
+
+    @Test
+    void aDisclaimerHasToNameThePayingCommittee() {
+        FileEntry nickname =
+                accepted(aCandidacy("R. Merrick", "Paid for by Friends of Rob"), "25-1044", List.of(aBought()));
+        assertThat(nickname.missing()).containsExactly("a disclaimer naming Merrick for Iowa");
+        FileEntry named =
+                accepted(aCandidacy("R. Merrick", "Paid for by  MERRICK FOR\tIOWA"), "25-1044", List.of(aBought()));
+        assertThat(named.missing()).isEmpty();
+        assertThat(aCandidacy().disclaimerNamesCommittee()).isTrue();
     }
 
     @Test

@@ -1,6 +1,7 @@
 package io.github.rkaushikdev.cartwall.domain;
 
 import java.time.LocalDate;
+import java.util.Locale;
 
 /**
  * A legally qualified candidate and the committee that pays.
@@ -24,6 +25,21 @@ public record Candidacy(String candidate, Race race, String committee, String au
     /** A candidacy with no disclaimer recorded yet. */
     public Candidacy(String candidate, Race race, String committee) {
         this(candidate, race, committee, "");
+    }
+
+    /**
+     * Whether the disclaimer names the committee that pays, ignoring case and spacing.
+     *
+     * <p>"Paid for by Merrick for Iowa" names it. "Paid for by Friends of Rob" does not, even
+     * when the friends are the committee, because the public file is read by people who only have
+     * the committee's registered name to go on.
+     */
+    public boolean disclaimerNamesCommittee() {
+        return squeezed(authorisedBy).contains(squeezed(committee));
+    }
+
+    private static String squeezed(String text) {
+        return text.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").strip();
     }
 
     /** Whether the lowest unit charge applies to a spot on this day. */

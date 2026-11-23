@@ -16,6 +16,11 @@ import java.util.Optional;
  *
  * <p>The entry is opened on the day of the request and the air times are added as the as-run
  * comes in, so it has two ages: when it was opened and when it was last touched.
+ *
+ * <p>Who paid has to be on it in a form the public can check. A candidate's spot carries a
+ * disclaimer, and the disclaimer has to name the committee that is paying, not a nickname for it.
+ * Issue advertising has no committee to hide behind, so the file lists the people who run the
+ * sponsor: its officers or its board.
  */
 public final class FileEntry {
 
@@ -26,6 +31,7 @@ public final class FileEntry {
     private final String order;
     private final String disposition;
     private final List<Bought> bought;
+    private final List<String> officers;
     private final List<Aired> aired = new ArrayList<>();
     private LocalDate touched;
 
@@ -41,6 +47,23 @@ public final class FileEntry {
             String order,
             String disposition,
             List<Bought> bought) {
+        this(requested, candidacy, use, accepted, order, disposition, bought, List.of());
+    }
+
+    /**
+     * @param order the order number, when the request was accepted
+     * @param disposition why, when the station said no or said no to part of it
+     * @param officers for issue advertising, who runs the sponsor
+     */
+    public FileEntry(
+            LocalDate requested,
+            Candidacy candidacy,
+            Use use,
+            boolean accepted,
+            String order,
+            String disposition,
+            List<Bought> bought,
+            List<String> officers) {
         this.requested = requested;
         this.candidacy = candidacy;
         this.use = use;
@@ -48,6 +71,7 @@ public final class FileEntry {
         this.order = order;
         this.disposition = disposition;
         this.bought = List.copyOf(bought);
+        this.officers = List.copyOf(officers);
     }
 
     public LocalDate requested() {
@@ -78,6 +102,11 @@ public final class FileEntry {
         return bought;
     }
 
+    /** Who runs the sponsor of an issue buy; empty for a candidate's own. */
+    public List<String> officers() {
+        return officers;
+    }
+
     public List<Aired> aired() {
         return Collections.unmodifiableList(aired);
     }
@@ -102,16 +131,28 @@ public final class FileEntry {
     /** What the rule requires that this entry does not yet have. */
     public List<String> missing() {
         List<String> gaps = new ArrayList<>();
-        if (candidacy.authorisedBy().isEmpty() && use == Use.CANDIDATE) {
-            gaps.add("the authorised by disclaimer");
+        switch (use) {
+            case CANDIDATE -> {
+                if (candidacy.authorisedBy().isEmpty()) {
+                    gaps.add("the authorised by disclaimer");
+                } else if (!candidacy.disclaimerNamesCommittee()) {
+                    gaps.add("a disclaimer naming " + candidacy.committee());
+                }
+            }
+            case ISSUE -> {
+                if (officers.isEmpty()) {
+                    gaps.add("the sponsor's officers or directors");
+                }
+            }
         }
-        if (accepted && order.isEmpty()) {
-            gaps.add("the order number");
-        }
-        if (accepted && bought.isEmpty()) {
-            gaps.add("what was bought");
-        }
-        if (!accepted && disposition.isEmpty()) {
+        if (accepted) {
+            if (order.isEmpty()) {
+                gaps.add("the order number");
+            }
+            if (bought.isEmpty()) {
+                gaps.add("what was bought");
+            }
+        } else if (disposition.isEmpty()) {
             gaps.add("why it was turned down");
         }
         return List.copyOf(gaps);
@@ -139,6 +180,7 @@ public final class FileEntry {
                 .field("ELECTION", race.kind().value() + " " + Ran.SWORN_DATE.format(race.electionDay()))
                 .field("COMMITTEE", candidacy.committee())
                 .field("USE", use.value())
+                .fieldIfAny("OFFICERS", String.join(", ", officers))
                 .field("DISPOSITION", accepted ? "accepted" : "rejected")
                 .fieldIfAny("NOTE", disposition);
         if (accepted) {
